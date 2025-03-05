@@ -1,49 +1,62 @@
 from flask import Flask, request, jsonify
 
 import aes_cbc
-import frodokem
 from frodokem import FrodoKEM
 import os
 
-app = Flask(__name__)
-app.secret_key = os.urandom(24)  # Setting a secret key for the session
+from flask_swagger_ui import get_swaggerui_blueprint
 
+app = Flask(__name__)
+app.secret_key = os.urandom(24)
+
+kem = FrodoKEM('FrodoKEM-640-SHAKE')
+
+SWAGGER_URL = '/docs'
+API_URL = '/static/swagger.json'
+SWAGGER_BLUEPRINT = get_swaggerui_blueprint(
+    SWAGGER_URL,
+    API_URL,
+    config = {
+        'app_name' : "FRODO KEM SHAKE 640 (CPA)"
+    }
+)
+
+app.register_blueprint(SWAGGER_BLUEPRINT, url_prefix = SWAGGER_URL)
 
 @app.route('/check', methods=['GET'])
 def check_server():
     return 'Server is up and running!'
 
-
-kem = FrodoKEM('FrodoKEM-640-SHAKE')
-
-
 @app.route('/1st-interface', methods=['POST'])
 def generate_keypair():
     data = request.get_json()
-    if 'string' not in data:
+    if 'UID' not in data:
         return jsonify({'error': 'String parameter(UID) is missing'}), 400
-    uid = data['string']
+    uid = data['UID']
     directory = 'student_files'
     if not os.path.exists(directory):
         os.makedirs(directory)
     filename = os.path.join(directory, f"{uid}.txt")
 
-    # kat_values = NISTKAT.run(FrodoKEM('FrodoKEM-640-SHAKE'))
     (pk,sk) = kem.kem_keygen()
     pk_hex = pk.hex().upper()
     sk_hex = sk.hex().upper()
+    seedA = pk_hex[0:32]
+    b = pk_hex[32:]
     true_secret = sk_hex[19264:]
     with open(filename, 'w') as file:
         file.write(f"Variant: FrodoKEM-640-SHAKE\n")
-        # file.write(f"Count: {kat_values['count']}\n")
-        # file.write(f"Seed: {kat_values['seed']}\n")
-        # file.write(f"Public Key: {kat_values['pk']}\n")
-        # file.write(f"Secret Key: {kat_values['sk']}\n")
         file.write(f"Public Key: {pk_hex}\n")
+        file.write(f"seedA: {seedA}\n")
+        file.write(f"b: {b}\n")
         file.write(f"Secret Key: {sk_hex}\n")
         file.write(f"True Secret: {true_secret}\n")
-    return jsonify({'message': 'Key pair generated and stored.', 'public_key': pk_hex}), 200
-
+    return jsonify({
+        'message': 'Key pair generated and stored.',
+        'public_key': pk_hex,
+        'seedA': seedA,
+        'b': b
+    }), 200
 
 @app.route('/2nd-interface', methods=['POST'])
 def decapsulate():
@@ -67,7 +80,6 @@ def decapsulate():
         file.write(f"Modified Cipher Text: {modified_cipher_text.hex().upper()}\n")
     return jsonify({'new_cipher': modified_cipher_text.hex().upper()}), 200
 
-
 @app.route('/3rd-interface', methods=['POST'])
 def check_sk():
     data = request.get_json()
@@ -82,11 +94,9 @@ def check_sk():
         content = file.read()
         true_secret_key = content.split('True Secret: ')[1].split('\n')[0]
     if true_secret_key == secret_key:
-        return jsonify({
-                           'message': "And hast thou slain the Jabberwock?\nCome to my arms, my beamish cryptographer!\nO frabjous day! Callooh! Callay!\nHe chortled in his joy."}), 200
+        return jsonify({'message': "And hast thou slain the Jabberwock?\nCome to my arms, my beamish cryptographer!\nO frabjous day! Callooh! Callay!\nHe chortled in his joy."}), 200
     else:
         return jsonify({'message': "Secret Key guess was incorrect.\n The Server refused to yield!"}), 400
 
-
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8080)
+    app.run(debug=True, host='127.0.0.1', port=5000)
