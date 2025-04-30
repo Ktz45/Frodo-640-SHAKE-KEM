@@ -1,0 +1,182 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "description": "Homework 04",
+    "version": "2.0",
+    "title": "Homework 04 Frodo KEM",
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+    "host": "127.0.0.1:5000",
+  "basePath": "/",
+  "schemes": [
+    "http"
+  ],
+  "paths": {
+    "/check": {
+      "get": {
+        "summary": "Check Server",
+        "description": "Returns a message indicating the server is up and running.",
+        "responses": {
+          "200": {
+            "description": "Server is up and running!"
+          }
+        }
+      }
+    },
+    "/1st-interface": {
+      "post": {
+        "summary": "Generate Keypair",
+        "description": "Generates a keypair and stores it.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "UID": {
+                  "type": "string",
+                  "description": "Unique identifier for the user"
+                }
+              },
+              "required": ["UID"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Key pair generated and stored.",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string"
+                },
+                "public_key": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "String parameter(UID) is missing",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/2nd-interface": {
+      "post": {
+        "summary": "Decapsulate",
+        "description": "Decapsulates the shared secret and modifies the cipher text.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "UID": {
+                  "type": "string",
+                  "description": "Unique identifier for the user"
+                },
+                "cipher_text": {
+                  "type": "string",
+                  "description": "Cipher text to be decapsulated"
+                }
+              },
+              "required": ["UID", "cipher_text"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New cipher text generated.",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "new_cipher": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing parameters or invalid UID",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/3rd-interface": {
+      "post": {
+        "summary": "Check Secret Key",
+        "description": "Checks if the provided secret key matches the stored true secret.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "UID": {
+                  "type": "string",
+                  "description": "Unique identifier for the user"
+                },
+                "secret_key": {
+                  "type": "string",
+                  "description": "Secret key to be checked"
+                }
+              },
+              "required": ["UID", "secret_key"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secret key is correct.",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Secret key guess was incorrect or invalid UID.",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
