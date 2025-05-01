@@ -74,7 +74,7 @@ def encaps(kem, seedA, b, delta=0, delta_i=0, delta_j=0):
     K = [[Q//4 for j in range(8)] for i in range(8)] # q/4 * (8x8 matrix of 1s)
     D = [[0 for j in range(8)] for i in range(8)]
     D[delta_i][delta_j] = delta
-    Bprime = matrix_add(__matrix_mul(R, A), E1)
+    Bprime = matrix_add(matrix_mul(R, A), E1)
     c1 = kem.pack(Bprime)
     V = matrix_add(matrix_add(matrix_mul(R, B), E2), D)
     C = matrix_add(V, K)
