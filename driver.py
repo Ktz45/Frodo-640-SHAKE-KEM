@@ -60,12 +60,23 @@ def matrix_transpose(X):
     return [[X[j][i] for j in range(nrows)] for i in range(ncols)]
 
 
+def matrix_gen_c1(kem, R, A, E1):
+    Bprime = matrix_add(matrix_mul(R, A), E1)
+    c1 = kem.pack(Bprime)
+    return c1
+
+def matrix_gen_c2(kem, R, B, E2, K, D):
+    V = matrix_add(matrix_add(matrix_mul(R, B), E2), D)
+    C = matrix_add(V, K)
+    c2 = kem.pack(C)
+    return c2
+
+
+
 def encaps(kem, seedA, b, delta=0, delta_i=0, delta_j=0):
     """
     Emulate kem_encaps with custom set terms
     """
-    ct = None
-    ss = None
     A = kem.gen(bytes.fromhex(seedA))
     B = kem.unpack(bytes.fromhex(b), 640, 8)
     R = [[1 for j in range(640)] for i in range(8)]
@@ -74,11 +85,8 @@ def encaps(kem, seedA, b, delta=0, delta_i=0, delta_j=0):
     K = [[Q//4 for j in range(8)] for i in range(8)] # q/4 * (8x8 matrix of 1s)
     D = [[0 for j in range(8)] for i in range(8)]
     D[delta_i][delta_j] = delta
-    Bprime = matrix_add(matrix_mul(R, A), E1)
-    c1 = kem.pack(Bprime)
-    V = matrix_add(matrix_add(matrix_mul(R, B), E2), D)
-    C = matrix_add(V, K)
-    c2 = kem.pack(C)
+    c1 = matrix_gen_c1(kem, R, A, E1)
+    c2 = matrix_gen_c2(kem, R, B, E2, K, D)
     salt = ""
     for _ in range(kem.len_salt_bytes + 32):
         salt += "A"
@@ -87,18 +95,32 @@ def encaps(kem, seedA, b, delta=0, delta_i=0, delta_j=0):
     ct = c1 + c2 + bytes_salt
     return ct, ss
 
-def permute_delta(kem, seedA, b, deltaMax, i, j):
+def permute_delta(kem, seedA, b, deltaMax, delta_i, delta_j):
     """
-    Finds the highest value of delta at entry i,j such that this will fail
-    (i.e. finds the value right before it loops around (I think?))
+    Finds the highest value of delta at entry i,j such that AES will succeed 
     """
     low = 0
     high = deltaMax
-    converged = False
+    delta = (high + low) // 2
+    A = kem.gen(bytes.fromhex(seedA))
+    B = kem.unpack(bytes.fromhex(b), 640, 8)
+    R = [[1 for j in range(640)] for i in range(8)]
+    E1 = [[Q for j in range(640)] for i in range(8)]
+    E2 = [[0 for j in range(8)] for i in range(8)]
+    K = [[Q//4 for j in range(8)] for i in range(8)] # q/4 * (8x8 matrix of 1s)
+    D = [[0 for j in range(8)] for i in range(8)]
+    c1 = matrix_gen_c1(kem, R, A, E1)
+    ss = kem.decode(K)
+    salt = ""
+    for _ in range(kem.len_salt_bytes + 32):
+        salt += "A"
+    bytes_salt = bytes.fromhex(salt)
     while low <= high:
         delta = (high + low) // 2
-        # print(low, delta, high)
-        ct, ss = encaps(kem_instance, seedA, b, delta=delta, delta_i=i, delta_j=j)
+        D[delta_i][delta_j] = delta
+        c2 = matrix_gen_c2(kem, R, B, E2, K, D)
+        D[delta_i][delta_j] = 0
+        ct = c1 + c2 + bytes_salt
         aes_ct = server.call_second_interface(UID, ct.hex().upper())
         failed = False
         try:
@@ -109,16 +131,13 @@ def permute_delta(kem, seedA, b, deltaMax, i, j):
         if not failed:
             low = delta + 1
     return delta
-                
-
-
 
 if __name__ == "__main__":
     server = None
     if MODE == ServerMode.REMOTE:
         server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
     elif MODE == ServerMode.LOCAL:
-        server = LocalServer()
+        server = LocalServer(determ=False)
 
     UID = '119008041'
     server.check_server()
