@@ -6,7 +6,7 @@ import binascii
 import secrets
 
 iv = bytes.fromhex(secrets.token_hex(16))
-message = b"\x02" * 16
+message = b"\x01" * 16
 
 
 def encrypt_aes_128_cbc(key):
@@ -21,9 +21,9 @@ def encrypt_aes_128_cbc(key):
 def decrypt_aes_128_cbc(key, ciphertext):
     key = bytes.fromhex(key)
     backend = default_backend()
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
+    cipher = Cipher(algorithms.AES(key), modes.CBC(ciphertext[:16]), backend=backend)
     decryptor = cipher.decryptor()
-    decrypted_padded = decryptor.update(ciphertext) + decryptor.finalize()
+    decrypted_padded = decryptor.update(ciphertext[16:]) + decryptor.finalize()
     unpadder = padding.PKCS7(128).unpadder()
     plaintext = unpadder.update(decrypted_padded)
     plaintext += unpadder.finalize()
