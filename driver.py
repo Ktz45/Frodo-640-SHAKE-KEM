@@ -1,6 +1,7 @@
 from frodokem import FrodoKEM
 from remote_server import RemoteServer
 from local_server import LocalServer
+from matrices import MatrixSet, matrix_add, matrix_mul, matrix_sub
 from enum import Enum
 import aes_cbc
 import secrets
@@ -29,45 +30,10 @@ first_interface = f"{BASE_URL}/1st-interface"
 second_interface = f"{BASE_URL}/2nd-interface"
 third_interface = f"{BASE_URL}/3rd-interface"
 Q = 32768
-
-def matrix_mul(X, Y):
-    """Compute matrix multiplication X * Y mod q"""
-    nrows_X = len(X)
-    ncols_X = len(X[0])
-    nrows_Y = len(Y)
-    ncols_Y = len(Y[0])
-    assert ncols_X == nrows_Y, "Mismatched matrix dimensions"
-    R = [[0 for j in range(ncols_Y)] for i in range(nrows_X)]
-    for i in range(nrows_X):
-        for j in range(ncols_Y):
-            for k in range(ncols_X):
-                R[i][j] += X[i][k] * Y[k][j]
-            R[i][j] %= Q
-    return R
-
-def matrix_add(X, Y):
-    """Compute matrix addition X + Y mod q"""
-    nrows_X = len(X)
-    ncols_X = len(X[0])
-    nrows_Y = len(Y)
-    ncols_Y = len(Y[0])
-    assert ncols_X == ncols_Y and nrows_X == nrows_Y, "Mismatched matrix dimensions"
-    return [[(X[i][j] + Y[i][j]) % Q for j in range(ncols_X)] for i in range(nrows_X)]
-
-def matrix_sub(X, Y):
-    """Compute matrix subtraction X - Y mod q"""
-    nrows_X = len(X)
-    ncols_X = len(X[0])
-    nrows_Y = len(Y)
-    ncols_Y = len(Y[0])
-    assert ncols_X == ncols_Y and nrows_X == nrows_Y, "Mismatched matrix dimensions"
-    return [[(X[i][j] - Y[i][j]) % Q for j in range(ncols_X)] for i in range(nrows_X)]
-
-def matrix_transpose(X):
-    """Compute transpose of matrix X"""
-    nrows = len(X)
-    ncols = len(X[0])
-    return [[X[j][i] for j in range(nrows)] for i in range(ncols)]
+salt = ""
+for _ in range(64):
+    salt += "A"
+BYTES_SALT = bytes.fromhex(salt)
 
 
 def matrix_gen_c1(kem, R, A, E1):
@@ -75,63 +41,43 @@ def matrix_gen_c1(kem, R, A, E1):
     c1 = kem.pack(Bprime)
     return c1
 
-def matrix_gen_c2(kem, R, B, E2, K, D):
-    V = matrix_add(matrix_add(matrix_mul(R, B), E2), D)
+def matrix_gen_c2(kem, R, B, E2, K, delta, delta_i, delta_j):
+    V = matrix_add(matrix_mul(R, B), E2)
+    V[delta_i][delta_j] = (V[delta_i][delta_j] + delta) % Q
     C = matrix_add(V, K)
     c2 = kem.pack(C)
     return c2
 
 
 
-def encaps(kem, seedA, b, delta=0, delta_i=0, delta_j=0):
+def encaps(kem, matrix_set, delta=0, delta_i=0, delta_j=0):
     """
     Emulate kem_encaps with custom set terms
     """
-    A = kem.gen(bytes.fromhex(seedA))
-    B = kem.unpack(bytes.fromhex(b), 640, 8)
+    # A = kem.gen(bytes.fromhex(seedA))
+    # B = kem.unpack(bytes.fromhex(b), 640, 8)
     R = [[1 for j in range(640)] for i in range(8)]
     E1 = [[Q for j in range(640)] for i in range(8)]
     E2 = [[0 for j in range(8)] for i in range(8)]
     K = [[Q//4 for j in range(8)] for i in range(8)] # q/4 * (8x8 matrix of 1s)
-    D = [[0 for j in range(8)] for i in range(8)]
-    D[delta_i][delta_j] = delta
-    c1 = matrix_gen_c1(kem, R, A, E1)
-    c2 = matrix_gen_c2(kem, R, B, E2, K, D)
-    salt = ""
-    for _ in range(kem.len_salt_bytes + 32):
-        salt += "A"
-    bytes_salt = bytes.fromhex(salt)
+    c1 = matrix_gen_c1(kem, matrix_set.R, matrix_set.A, matrix_set.E1)
+    c2 = matrix_gen_c2(kem, matrix_set.R, matrix_set.B, matrix_set.E2, matrix_set.K, delta, delta_i, delta_j)
     ss = kem.decode(K)
-    ct = c1 + c2 + bytes_salt
+    ct = c1 + c2 + BYTES_SALT
     return ct, ss
 
-def permute_delta(kem, seedA, b, deltaMax, delta_i, delta_j):
+def permute_delta(server, uid, kem, matrix_set, c1, ss, deltaMax, delta_i, delta_j):
     """
     Finds the highest value of delta at entry i,j such that AES will succeed 
     """
     low = 0
     high = deltaMax
     delta = (high + low) // 2
-    A = kem.gen(bytes.fromhex(seedA))
-    B = kem.unpack(bytes.fromhex(b), 640, 8)
-    R = [[1 for j in range(640)] for i in range(8)]
-    E1 = [[Q for j in range(640)] for i in range(8)]
-    E2 = [[0 for j in range(8)] for i in range(8)]
-    K = [[Q//4 for j in range(8)] for i in range(8)] # q/4 * (8x8 matrix of 1s)
-    D = [[0 for j in range(8)] for i in range(8)]
-    c1 = matrix_gen_c1(kem, R, A, E1)
-    ss = kem.decode(K)
-    salt = ""
-    for _ in range(kem.len_salt_bytes + 32):
-        salt += "A"
-    bytes_salt = bytes.fromhex(salt)
     while low <= high:
         delta = (high + low) // 2
-        D[delta_i][delta_j] = delta
-        c2 = matrix_gen_c2(kem, R, B, E2, K, D)
-        D[delta_i][delta_j] = 0
-        ct = c1 + c2 + bytes_salt
-        aes_ct = server.call_second_interface(UID, ct.hex().upper())
+        c2 = matrix_gen_c2(kem, matrix_set.R, matrix_set.B, matrix_set.E2, matrix_set.K, delta, delta_i, delta_j)
+        ct = c1 + c2 + BYTES_SALT
+        aes_ct = server.call_second_interface(uid, ct.hex().upper())
         failed = False
         try:
             aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex()
@@ -163,34 +109,25 @@ def oracle(server, uid, bprime, c2) -> bytes:
 _oracle_cached.cache = {}
 
 def _recover_coeff(args):
-    i, j, base_cipher, kem, uid, server = args
-    blank_bprime = [[0]*kem.n for _ in range(kem.nbar)]  # 8x640 zeros
-    lo, hi = 0, kem.q-1
-    while hi-lo > 1:
-        mid = (lo+hi)//2
-        test_C2 = [[0]*kem.nbar for _ in range(kem.nbar)]
-        test_C2[j][j] = mid % kem.q
-        if oracle(server, uid, blank_bprime, test_C2) != base_cipher:
-            hi = mid
-        else:
-            lo = mid
-    return (i, j, lo)
+    i, j, seedA, b, kem, uid, server = args
+    delta = permute_delta(server,uid, kem, seedA, b, Q, i, j)
+    return (i, j, delta)
 
 
-def recover_secret_parallel(server, uid, pk_hex, rows=None, cols=None, workers=None):
+def recover_secret_parallel(server, uid, seedA, b, rows=None, cols=None, workers=None):
     kem = FrodoKEM(VARIANT)
     rows = rows or kem.n
     cols = cols or kem.nbar
     print(f"[recover] target matrix size: {rows}x{cols}")
 
-    blank_bprime = [[0]*kem.n for _ in range(kem.nbar)]
-    base_cipher = oracle(server, uid, blank_bprime, [[0]*kem.nbar for _ in range(kem.nbar)])
+    # blank_bprime = [[0]*kem.n for _ in range(kem.nbar)]
+    # base_cipher = oracle(server, uid, blank_bprime, [[0]*kem.nbar for _ in range(kem.nbar)])
 
     start = time.time()
     tasks = []
     for i in range(rows):
         for j in range(cols):
-            tasks.append((i, j, base_cipher, kem, uid, server))
+            tasks.append((i, j, seedA, b, kem, uid, server))
 
     done = 0
     total = len(tasks)
@@ -208,6 +145,7 @@ def recover_secret_parallel(server, uid, pk_hex, rows=None, cols=None, workers=N
     duration = time.time() - start
     print(f"Parallel recovery finished in {duration:.2f}s for {rows*cols} coeffs using {workers} threads")
 
+    exit(0)
     # Results have already been stored in S inside the loop above.
     # === verify with honest encaps ===
     kem = FrodoKEM(VARIANT)
@@ -345,6 +283,7 @@ if __name__ == "__main__":
     parser.add_argument("--size", choices=["demo","medium","full"], default="demo",
                         help="demo=8x2, medium=16x4, full=640x8")
     parser.add_argument("--fresh", action="store_true", help="delete existing checkpoints and student file for UID before run")
+    parser.add_argument("--determ", action="store_true", help="run based on the last student file saved")
     args = parser.parse_args()
 
     server = None
@@ -353,27 +292,29 @@ if __name__ == "__main__":
         server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
     elif MODE == ServerMode.LOCAL:
         print("Local Server")
-        server = LocalServer()
+        server = LocalServer(determ=args.determ)
 
     UID = '119008041'
     server.check_server()
 
     pk, seedA, b = server.call_first_interface(UID)
+    kem_instance = FrodoKEM(VARIANT)
+    matrix_set = MatrixSet(640, 8, seedA=seedA, b=b)
     # ct, ss =  kem_instance.kem_encaps(bytes.fromhex(pk)) # Create honest ciphertext?
-    # delta = permute_delta(kem_instance, seedA, b, Q, 0, 0)
-    # print(f"Found delta:{delta}")
-    # ct, ss = encaps(kem_instance, seedA, b, delta=(delta-1))
-    # aes_ct = server.call_second_interface(UID, ct.hex().upper())
-    # print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
-    # print(f"{delta - 1} passed")
-    # ct, ss = encaps(kem_instance, seedA, b, delta=(delta))
-    # aes_ct = server.call_second_interface(UID, ct.hex().upper())
-    # print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
-    # print(f"{delta} passed")
-    # ct, ss = encaps(kem_instance, seedA, b, delta=(delta+1))
-    # aes_ct = server.call_second_interface(UID, ct.hex().upper())
-    # print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
-    # print(f"{delta + 1} passed")
+    ct, ss = encaps(kem_instance, matrix_set, delta=(0))
+    aes_ct = server.call_second_interface(UID, ct.hex().upper())
+    c1 = ct[0:(int(kem_instance.mbar * kem_instance.n * kem_instance.D / 8))]
+    delta = permute_delta(server, UID, kem_instance, matrix_set, c1, ss, Q//2, 0, 0) # TODO: Check bounding of Q
+    print(f"Found delta:{delta}")
+    print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
+    ct, ss = encaps(kem_instance, matrix_set, delta=(delta+1))
+    aes_ct = server.call_second_interface(UID, ct.hex().upper())
+    print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
+    print(f"{delta + 1} passed")
+    exit()
+
+
+
     size_map = {
         "demo": (8,2),
         "medium": (16,4),
@@ -382,7 +323,7 @@ if __name__ == "__main__":
     rows,cols = size_map[args.size]
     print(f"Launching parallel attack size={args.size} ...")
     t0=time.time()
-    S, ss_hex, pt_hex, cipher_hex = recover_secret_parallel(server, UID, pk, rows=rows, cols=cols, workers=None)
+    S, ss_hex, pt_hex, cipher_hex = recover_secret_parallel(server, UID, seedA, b, rows=rows, cols=cols, workers=None)
     total=time.time()-t0
     print("Recovered first row sample:", S[0][:8])
     print(f"Total attack runtime: {total/60:.2f} minutes ({total:.1f} seconds)")
