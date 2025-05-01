@@ -5,8 +5,9 @@ import os
 import binascii
 import secrets
 
-iv = bytes.fromhex(secrets.token_hex(16))
-message = b"\x00" * 16
+# iv = bytes.fromhex(secrets.token_hex(16))
+iv = bytes.fromhex("AED98227C2321A5CEE4F27838D67C91B") # Based on server?
+message = b"\x01" * 16
 
 
 def encrypt_aes_128_cbc(key):
