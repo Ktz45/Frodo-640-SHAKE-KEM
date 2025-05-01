@@ -68,29 +68,24 @@ def encaps(kem, r, seedA, b, e1, e2, k, delta=0):
     ss = None
     # A = kem.encode(seedA)
     A = kem.gen(bytes.fromhex(seedA))
-    print(len(A), len(A[0]))
     B = kem.unpack(bytes.fromhex(b), 640, 8)
     R = [[1 for j in range(640)] for i in range(8)]
-    E1 = [[0 for j in range(640)] for i in range(8)]
+    E1 = [[Q for j in range(640)] for i in range(8)]
     E2 = [[0 for j in range(8)] for i in range(8)]
     K = [[Q//4 for j in range(8)] for i in range(8)] # q/4 * (8x8 matrix of 1s)
-    D = [[delta for j in range(8)] for i in range(8)]
+    D = [[0 for j in range(8)] for i in range(8)]
+    D[0][0] = delta
     Bprime = __matrix_add(__matrix_mul(R, A), E1)
     c1 = kem.pack(Bprime)
     V = __matrix_add(__matrix_add(__matrix_mul(R, B), E2), D)
     C = __matrix_add(V, K)
     c2 = kem.pack(C)
-    
     salt = ""
     for _ in range(kem.len_salt_bytes + 32):
         salt += "A"
     bytes_salt = bytes.fromhex(salt)
     ss = kem.decode(K)
-    print(len(ss))
-    print(len(c1))
-    print(len(c2))
     ct = c1 + c2 + bytes_salt
-    print(len(ct))
     return ct, ss
 
 if __name__ == "__main__":
@@ -106,12 +101,10 @@ if __name__ == "__main__":
     kem_instance = FrodoKEM(VARIANT)
     # 1st Interface
     pk, seedA, b = server.call_first_interface(UID)
-    ct, ss =  kem_instance.kem_encaps(bytes.fromhex(pk)) # Create honest ciphertext?
-    # ct, ss = encaps(kem_instance, None, seedA, b, None, None, None, delta=(0))
+    # ct, ss =  kem_instance.kem_encaps(bytes.fromhex(pk)) # Create honest ciphertext?
+    ct, ss = encaps(kem_instance, None, seedA, b, None, None, None, delta=(0))
     aes_ct = server.call_second_interface(UID, ct.hex().upper())
-    # print(aes_cbc.decrypt_aes_128_cbc(kem_instance.decode([[1 for j in range(8)] for i in range(8)]).hex().upper(), bytes.fromhex(aes_ct)))
-    print(ss.hex().upper())
-    print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)))
+    print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
 
     server.call_third_interface(UID, "TEST")
     

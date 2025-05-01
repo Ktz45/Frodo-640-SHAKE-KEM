@@ -34,9 +34,9 @@ class LocalServer():
             file.write(f"Secret Key: {sk_hex}\n")
             file.write(f"True Secret: {true_secret}\n")
         print("Key pair generated and stored")
-        print(f"Public Key: {pk_hex}")
-        print(f"seedA: {seedA}")
-        print(f"b: {b}")
+        # print(f"Public Key: {pk_hex}")
+        # print(f"seedA: {seedA}")
+        # print(f"b: {b}")
         return pk_hex, seedA, b
 
     def call_second_interface(self, uid, cipher_text):
