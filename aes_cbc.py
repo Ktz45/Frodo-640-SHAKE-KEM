@@ -22,9 +22,9 @@ def encrypt_aes_128_cbc(key):
 def decrypt_aes_128_cbc(key, ciphertext):
     key = bytes.fromhex(key)
     backend = default_backend()
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
+    cipher = Cipher(algorithms.AES(key), modes.CBC(ciphertext[:16]), backend=backend)
     decryptor = cipher.decryptor()
-    decrypted_padded = decryptor.update(ciphertext) + decryptor.finalize()
+    decrypted_padded = decryptor.update(ciphertext[16:]) + decryptor.finalize()
     unpadder = padding.PKCS7(128).unpadder()
     plaintext = unpadder.update(decrypted_padded)
     plaintext += unpadder.finalize()
