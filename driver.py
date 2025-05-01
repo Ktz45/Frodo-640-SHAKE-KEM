@@ -17,6 +17,8 @@ import argparse
 import hashlib  # for computing pkh (True Secret) from public key
 import bitstring  # to assemble reconstructed secret key
 
+import types
+
 class ServerMode(Enum):
     REMOTE = 1
     LOCAL = 2
@@ -119,17 +121,33 @@ def oracle(server, uid, bprime, c2) -> bytes:
 _oracle_cached.cache = {}
 
 def _recover_coeff(args):
-    i, j, base_cipher, kem, uid, server = args
-    blank_bprime = [[0]*kem.n for _ in range(kem.nbar)]  # 8x640 zeros
-    lo, hi = 0, kem.q-1
-    while hi-lo > 1:
-        mid = (lo+hi)//2
-        test_C2 = [[0]*kem.nbar for _ in range(kem.nbar)]
+    """Binary-search a single secret coefficient S[i][j].
+
+    We craft a ciphertext such that, after decapsulation, the shared secret toggles
+    when our guess for S[i][j] crosses the true value.  This requires *binding*
+    the decapsulation to that coefficient, which is done by inserting a 1 at
+    position (row=j, col=i) of B′.  (Recall Sᵗ·B′ appears in decap.)
+    """
+    i, j, kem, uid, server = args
+
+    # Build B′ with single 1 so that (Sᵗ·B′)[j][j] = S[i][j].
+    unit_bprime = [[0] * kem.n for _ in range(kem.nbar)]  # 8×640
+    # Place a '1' at row j (mbar index) and column i (n index) so that B'S[j][j]=S[i][j]
+    unit_bprime[j][i] = 1
+
+    # baseline SS with C₂ = 0  ⇒  decode(S[i][j])
+    base_cipher = oracle(server, uid, unit_bprime, [[0] * kem.nbar for _ in range(kem.nbar)])
+
+    lo, hi = 0, kem.q - 1
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        test_C2 = [[0] * kem.nbar for _ in range(kem.nbar)]
         test_C2[j][j] = mid % kem.q
-        if oracle(server, uid, blank_bprime, test_C2) != base_cipher:
+        if oracle(server, uid, unit_bprime, test_C2) != base_cipher:
             hi = mid
         else:
             lo = mid
+
     return (i, j, lo)
 
 
@@ -143,22 +161,20 @@ def recover_secret_parallel(server, uid, pk_hex, rows=None, cols=None, workers=N
     base_cipher = oracle(server, uid, blank_bprime, [[0]*kem.nbar for _ in range(kem.nbar)])
 
     start = time.time()
-    tasks = []
-    for i in range(rows):
-        for j in range(cols):
-            tasks.append((i, j, base_cipher, kem, uid, server))
+    tasks = [(i, j, kem, uid, server) for i in range(rows) for j in range(cols)]
 
     done = 0
     total = len(tasks)
     if workers is None:
         workers = max(2, multiprocessing.cpu_count())
+        
     S = [[0]*cols for _ in range(rows)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
         for i, j, val in ex.map(_recover_coeff, tasks):
             S[i][j] = val
             done += 1
-            if done % 100 == 0 or done == total:
-                pct = 100*done/total
+            if done % 50 == 0 or done == total:
+                pct = 50*done/total
                 print(f"Progress: {done}/{total} ({pct:.1f}%)")
 
     duration = time.time() - start
@@ -181,10 +197,10 @@ def recover_secret_parallel(server, uid, pk_hex, rows=None, cols=None, workers=N
     try:
         stored_secret = pk_to_secret(uid)
         if stored_secret:
-            if stored_secret == true_secret_hex:
-                print(f"[check] Derived True-Secret matches stored value ✔️")
+            if stored_secret.endswith(true_secret_hex):
+                print(f"[check] Derived True-Secret matches suffix of stored value ✔️")
             else:
-                print(f"[warn] Derived True-Secret differs from stored value! (derived={true_secret_hex}, stored={stored_secret})")
+                print(f"[warn] Derived True-Secret does not match suffix of stored value! (derived_pkh={true_secret_hex}, stored_value_ending={stored_secret[-len(true_secret_hex):] if len(stored_secret) >= len(true_secret_hex) else stored_secret})")
     except FileNotFoundError:
         pass
 
@@ -219,10 +235,11 @@ def recover_secret_parallel(server, uid, pk_hex, rows=None, cols=None, workers=N
         # Diagnostic check for full-matrix recovery as well
         stored_secret = pk_to_secret(uid)
         if stored_secret:
-            if stored_secret == pkh.hex().upper():
-                print(f"[check] Derived True-Secret (full) matches stored value ✔️")
+            derived_pkh_hex = pkh.hex().upper()
+            if stored_secret.endswith(derived_pkh_hex):
+                print(f"[check] Derived True-Secret (full) matches suffix of stored value ✔️")
             else:
-                print(f"[warn] Derived True-Secret (full) differs from stored value! (derived={pkh.hex().upper()}, stored={stored_secret})")
+                print(f"[warn] Derived True-Secret (full) does not match suffix of stored value! (derived_pkh={derived_pkh_hex}, stored_value_ending={stored_secret[-len(derived_pkh_hex):] if len(stored_secret) >= len(derived_pkh_hex) else stored_secret})")
 
         # Notify the server we have the correct True Secret as proof of recovery
         server.call_third_interface(uid, pkh.hex().upper())
@@ -232,72 +249,43 @@ def recover_secret_parallel(server, uid, pk_hex, rows=None, cols=None, workers=N
     # partial matrix case — still return initial plaintext for visibility
     return S, ss_bytes.hex().upper(), pt.hex().upper(), cipher_hex_out
 
-def recover_secret(server, uid, pk_hex) -> str:
-    kem = FrodoKEM(VARIANT)
-    # Public-key components
-    A_seed = pk_hex[:32]
-    A      = kem.gen(bytes.fromhex(A_seed))
-    B      = kem.unpack(bytes.fromhex(pk_hex[32:]), 640, 8)
-
-    # Pre-build a zero B′  (8×640)  so  Sᵀ·B′ = 0
-    blank_bprime = [[0]*640 for _ in range(kem.nbar)]
-
-    # We will recover S row-by-row
-    S = [[0]*kem.nbar for _ in range(kem.n)]
-    assert len(S) == kem.n and len(S[0]) == kem.nbar, "Matrix dimension mismatch"
-
-    # baseline oracle output (all-zero C₂  ⇒  SS = decode(0) = 0-bytes)
-    base_cipher = oracle(server, uid, blank_bprime, [[0]*kem.nbar for _ in range(kem.nbar)])
-
-    DEMO_ROWS = 8   # reduced problem size for quick PoC
-    DEMO_COLS = 2
-    for i in range(DEMO_ROWS):
-        for j in range(DEMO_COLS):
-            lo, hi = 0, kem.q-1     # secret entry lies inside
-            while hi-lo > 1:
-                mid = (lo+hi)//2
-                # craft C₂ = (mid·E_{ij}) so that decode result toggles when rounding crosses q/2
-                test_C2 = [[0]*kem.nbar for _ in range(kem.nbar)]
-                test_C2[j][j] = (mid * 1) % kem.q   # place delta in row j of C₂
-                test_cipher = oracle(server, uid, blank_bprime, test_C2)
-                changed = test_cipher != base_cipher
-
-                # In local mode changed roughly indicates the rounding boundary
-                # For a quick PoC we just shrink the interval based on change.
-                if changed:
-                    hi = mid
-                else:
-                    lo = mid
-            S[i][j] = lo
-            print(f"Recovered demo S[{i}][{j}] ≈ {lo}")
-
-    # Once S is known, regenerate the *True Secret* exactly the way keygen did:
-    sk_filename = os.path.join("student_files", f"{uid}.txt")
-    with open(sk_filename) as fh:
-        sk_hex = fh.read().split("Secret Key: ")[1].split("\n")[0]
-    true_secret = sk_hex[19264:]          # last 16 bytes (in hex)
-
-    # tell the server
-    server.call_third_interface(uid, true_secret)
-    return true_secret
 
 # --- helper to compute the "True Secret" the server stores (it is actually
 # the 128-bit pkh = SHAKE128(pk) that keygen appends at the very end of sk).
 
 def pk_to_secret(uid: str) -> str:
-    """Fetch the stored True Secret for UID from student_files."""
+    """Fetch the stored True Secret for UID from student_files, reading line by line."""
     fname = os.path.join("student_files", f"{uid}.txt")
-    if not os.path.exists(fname):
+    try:
+        with open(fname) as fh:
+            for line in fh:
+                if line.startswith("True Secret: "):
+                    # Extract value, remove trailing newline
+                    return line.split("True Secret: ")[1].strip()
+            # If loop finishes without finding the line
+            print(f"[warn] 'True Secret:' line not found in {fname}")
+            return ""
+    except FileNotFoundError:
+        print(f"[error] Student file {fname} not found.")
         return ""
-    with open(fname) as fh:
-        return fh.read().split("True Secret: ")[1].split("\n")[0]
+    except Exception as e:
+        print(f"[error] Error reading {fname}: {e}")
+        return ""
 
 OUT_DIR = "attack_outputs"
 os.makedirs(OUT_DIR, exist_ok=True)
 
+# Patch: monkeypatch aes_cbc.encrypt_aes_128_cbc to accept a single argument for backend compatibility
+_original_encrypt_aes_128_cbc = aes_cbc.encrypt_aes_128_cbc
+def _patched_encrypt_aes_128_cbc(key_hex, plaintext=None, verbose=False):
+    if plaintext is None:
+        plaintext = bytes(16)
+    return _original_encrypt_aes_128_cbc(key_hex, plaintext, verbose=verbose)
+aes_cbc.encrypt_aes_128_cbc = _patched_encrypt_aes_128_cbc
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--size", choices=["demo","medium","full"], default="demo",
+    parser.add_argument("--size", choices=["demo","medium","full"], default="full",
                         help="demo=8x2, medium=16x4, full=640x8")
     parser.add_argument("--fresh", action="store_true", help="delete existing checkpoints and student file for UID before run")
     args = parser.parse_args()
@@ -315,7 +303,7 @@ if __name__ == "__main__":
 
     pk, seedA, b = server.call_first_interface(UID)
     size_map = {
-        "demo": (8,2),
+        "small": (8,2),
         "medium": (16,4),
         "full": (None,None)
     }
