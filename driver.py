@@ -20,7 +20,7 @@ second_interface = f"{BASE_URL}/2nd-interface"
 third_interface = f"{BASE_URL}/3rd-interface"
 Q = 32768
 
-def __matrix_mul(X, Y):
+def matrix_mul(X, Y):
     """Compute matrix multiplication X * Y mod q"""
     nrows_X = len(X)
     ncols_X = len(X[0])
@@ -35,7 +35,7 @@ def __matrix_mul(X, Y):
             R[i][j] %= Q
     return R
 
-def __matrix_add(X, Y):
+def matrix_add(X, Y):
     """Compute matrix addition X + Y mod q"""
     nrows_X = len(X)
     ncols_X = len(X[0])
@@ -44,7 +44,7 @@ def __matrix_add(X, Y):
     assert ncols_X == ncols_Y and nrows_X == nrows_Y, "Mismatched matrix dimensions"
     return [[(X[i][j] + Y[i][j]) % Q for j in range(ncols_X)] for i in range(nrows_X)]
 
-def __matrix_sub(X, Y):
+def matrix_sub(X, Y):
     """Compute matrix subtraction X - Y mod q"""
     nrows_X = len(X)
     ncols_X = len(X[0])
@@ -53,7 +53,7 @@ def __matrix_sub(X, Y):
     assert ncols_X == ncols_Y and nrows_X == nrows_Y, "Mismatched matrix dimensions"
     return [[(X[i][j] - Y[i][j]) % Q for j in range(ncols_X)] for i in range(nrows_X)]
 
-def __matrix_transpose(X):
+def matrix_transpose(X):
     """Compute transpose of matrix X"""
     nrows = len(X)
     ncols = len(X[0])
@@ -66,7 +66,6 @@ def encaps(kem, seedA, b, delta=0, delta_i=0, delta_j=0):
     """
     ct = None
     ss = None
-    # A = kem.encode(seedA)
     A = kem.gen(bytes.fromhex(seedA))
     B = kem.unpack(bytes.fromhex(b), 640, 8)
     R = [[1 for j in range(640)] for i in range(8)]
@@ -75,10 +74,10 @@ def encaps(kem, seedA, b, delta=0, delta_i=0, delta_j=0):
     K = [[Q//4 for j in range(8)] for i in range(8)] # q/4 * (8x8 matrix of 1s)
     D = [[0 for j in range(8)] for i in range(8)]
     D[delta_i][delta_j] = delta
-    Bprime = __matrix_add(__matrix_mul(R, A), E1)
+    Bprime = matrix_add(__matrix_mul(R, A), E1)
     c1 = kem.pack(Bprime)
-    V = __matrix_add(__matrix_add(__matrix_mul(R, B), E2), D)
-    C = __matrix_add(V, K)
+    V = matrix_add(matrix_add(matrix_mul(R, B), E2), D)
+    C = matrix_add(V, K)
     c2 = kem.pack(C)
     salt = ""
     for _ in range(kem.len_salt_bytes + 32):
@@ -103,7 +102,7 @@ def permute_delta(kem, seedA, b, deltaMax, i, j):
         aes_ct = server.call_second_interface(UID, ct.hex().upper())
         failed = False
         try:
-            print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
+            aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex()
         except ValueError:
             failed = True
             high = delta - 1
