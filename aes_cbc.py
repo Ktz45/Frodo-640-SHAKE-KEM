@@ -6,7 +6,7 @@ import binascii
 import secrets
 
 iv = bytes.fromhex(secrets.token_hex(16))
-message = b"\x02" * 16
+message = b"\x00" * 16
 
 
 def encrypt_aes_128_cbc(key):
