@@ -49,10 +49,11 @@ class RemoteServer():
             if response.status_code == 200:
                 result = response.json()
                 ss_d = result.get('new_cipher')
-                aes_key = result.get('aes_key')
+                # aes_key = result.get('aes_key')
                 print("AES Encrypted Ciphertext returned.")
                 # print(f"NEW CIPHER: {ss_d}")
-                return ss_d, aes_key
+                # return ss_d, aes_key
+                return ss_d
             else:
                 print(f"Failed to encrypt data. Status code: {response.status_code}")
                 return None
