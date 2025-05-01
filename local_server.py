@@ -7,8 +7,8 @@ import os
 kem = FrodoKEM('FrodoKEM-640-SHAKE')
 
 class LocalServer():
-    def __init__(self):
-        pass
+    def __init__(self, determ=False):
+        self.determ = determ
 
     def check_server(self):
         print('Server is up and running!')
@@ -20,7 +20,16 @@ class LocalServer():
             os.makedirs(directory)
         filename = os.path.join(directory, f"{uid}.txt")
 
+        if not filename and self.determ:
+            raise FileNotFoundError("Can't find file - run once non-deterministically to generate a key")
+
         (pk,sk) = kem.kem_keygen()
+        # NOTE: Uncomment these lines to read last key generated - this allows us to test deterministically
+        if self.determ:
+            with open(filename, 'r') as file:
+                content = file.read()
+                pk = bytes.fromhex(content.split('Public Key: ')[1].split('\n')[0])
+                sk = bytes.fromhex(content.split('Secret Key: ')[1].split('\n')[0])
         pk_hex = pk.hex().upper()
         sk_hex = sk.hex().upper()
         seedA = pk_hex[0:32]
