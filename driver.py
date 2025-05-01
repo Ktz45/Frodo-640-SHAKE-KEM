@@ -60,7 +60,7 @@ def __matrix_transpose(X):
     return [[X[j][i] for j in range(nrows)] for i in range(ncols)]
 
 
-def encaps(kem, r, seedA, b, e1, e2, k, delta=0):
+def encaps(kem, seedA, b, delta=0, delta_i=0, delta_j=0):
     """
     Emulate kem_encaps with custom set terms
     """
@@ -74,7 +74,7 @@ def encaps(kem, r, seedA, b, e1, e2, k, delta=0):
     E2 = [[0 for j in range(8)] for i in range(8)]
     K = [[Q//4 for j in range(8)] for i in range(8)] # q/4 * (8x8 matrix of 1s)
     D = [[0 for j in range(8)] for i in range(8)]
-    D[0][0] = delta
+    D[delta_i][delta_j] = delta
     Bprime = __matrix_add(__matrix_mul(R, A), E1)
     c1 = kem.pack(Bprime)
     V = __matrix_add(__matrix_add(__matrix_mul(R, B), E2), D)
@@ -87,6 +87,32 @@ def encaps(kem, r, seedA, b, e1, e2, k, delta=0):
     ss = kem.decode(K)
     ct = c1 + c2 + bytes_salt
     return ct, ss
+
+def permute_delta(kem, seedA, b, deltaMax, i, j):
+    """
+    Finds the highest value of delta at entry i,j such that this will fail
+    (i.e. finds the value right before it loops around (I think?))
+    """
+    low = 0
+    high = deltaMax
+    converged = False
+    while low <= high:
+        delta = (high + low) // 2
+        # print(low, delta, high)
+        ct, ss = encaps(kem_instance, seedA, b, delta=delta, delta_i=i, delta_j=j)
+        aes_ct = server.call_second_interface(UID, ct.hex().upper())
+        failed = False
+        try:
+            print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
+        except ValueError:
+            failed = True
+            high = delta - 1
+        if not failed:
+            low = delta + 1
+    return delta
+                
+
+
 
 if __name__ == "__main__":
     server = None
@@ -102,9 +128,20 @@ if __name__ == "__main__":
     # 1st Interface
     pk, seedA, b = server.call_first_interface(UID)
     # ct, ss =  kem_instance.kem_encaps(bytes.fromhex(pk)) # Create honest ciphertext?
-    ct, ss = encaps(kem_instance, None, seedA, b, None, None, None, delta=(0))
+    delta = permute_delta(kem_instance, seedA, b, Q, 0, 0)
+    print(f"Found delta:{delta}")
+    ct, ss = encaps(kem_instance, seedA, b, delta=(delta-1))
     aes_ct = server.call_second_interface(UID, ct.hex().upper())
     print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
+    print(f"{delta - 1} passed")
+    ct, ss = encaps(kem_instance, seedA, b, delta=(delta))
+    aes_ct = server.call_second_interface(UID, ct.hex().upper())
+    print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
+    print(f"{delta} passed")
+    ct, ss = encaps(kem_instance, seedA, b, delta=(delta+1))
+    aes_ct = server.call_second_interface(UID, ct.hex().upper())
+    print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
+    print(f"{delta + 1} passed")
 
     server.call_third_interface(UID, "TEST")
     
