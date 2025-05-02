@@ -24,6 +24,9 @@ class FrodoKEM(object):
         if variant == "FrodoKEM-640-SHAKE":
             self.setParamsFrodo640()
             self.gen = self.genSHAKE128
+        elif variant == "Small-FrodoKEM":
+            self.setParamsFrodoSmall()
+            self.gen = self.genSHAKE128
         else:
             assert "Unknown variant"
         # warnings.warn("WARNING: This Python3 implementation of FrodoKEM is not designed to be fast or secure, and may leak secret information via timing or other side channels; it should not be used in production environments.")

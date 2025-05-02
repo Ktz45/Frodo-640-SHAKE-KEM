@@ -46,11 +46,15 @@ class MatrixSet():
     Wrapper class to hold constant matrices
     """
     def __init__(self, n, nbar, seedA=None, b=None):
-        if(seedA and b):
-            assert n == 640 and nbar == 8
+        if(seedA and b and n == 640 and nbar == 8):
+            # FULL SIZE
             kem = FrodoKEM(VARIANT)
             self.A = kem.gen(bytes.fromhex(seedA))
             self.B = kem.unpack(bytes.fromhex(b), n, nbar)
+        elif seedA and b:
+            # Some other size - currently hardcoded
+            self.A = [[(1 if i == j else 0) for j in range(n)] for i in range(n)]
+            self.B = [[(1 if i == j else 0) for j in range(nbar)] for i in range(n)]
         else:
             self.A = None
             self.B = None
