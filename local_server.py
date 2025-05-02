@@ -24,7 +24,6 @@ class LocalServer():
             raise FileNotFoundError("Can't find file - run once non-deterministically to generate a key")
 
         (pk,sk) = kem.kem_keygen()
-        # NOTE: Uncomment these lines to read last key generated - this allows us to test deterministically
         if self.determ:
             with open(filename, 'r') as file:
                 content = file.read()
@@ -62,7 +61,7 @@ class LocalServer():
         with open(filename, 'a') as file:
             file.write(f"Shared Secret Decapsulated: {ss_d.hex().upper()}\n")
             file.write(f"Modified Cipher Text: {modified_cipher_text.hex().upper()}\n")
-        print("AES Ciphertext Returned")
+        # print("AES Ciphertext Returned")
         return modified_cipher_text.hex().upper()
 
     def call_third_interface(self, uid, secret_key):
