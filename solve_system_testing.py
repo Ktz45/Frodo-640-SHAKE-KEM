@@ -173,9 +173,139 @@ def prepare_matrices(solver_data: Dict[str, Any]) -> Optional[Tuple[Any, np.ndar
 
     return kem, A_np, B_np, S_known_matrix, q, n, nbar, modulus_approx
 
-# --- Lattice Solver Worker REMOVED ---
-# def solve_column_worker(...): 
-#    ... (function body removed) ...
+# --- Lattice Solver Worker ---
+def solve_column_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, int, int, int, int, int, str]) -> Tuple[int, Optional[np.ndarray]]:
+    """Solves for one column s_j_unknown using lattice reduction."""
+    col_j, A_np, B_np, S_known_matrix_np, q, n, nbar, modulus_approx, bkz_block_size, bkz_float_type = args
+    worker_log_prefix = f"[Worker {col_j}]"
+    log.info(f"{worker_log_prefix} Starting...")
+    
+    # --- Assertions on Input Data --- 
+    try:
+        assert A_np.shape == (n, n), f"Worker {col_j}: Incorrect A shape {A_np.shape}, expected ({n},{n})"
+        assert B_np.shape == (n, nbar), f"Worker {col_j}: Incorrect B shape {B_np.shape}, expected ({n},{nbar})"
+        assert S_known_matrix_np.shape == (n, nbar), f"Worker {col_j}: Incorrect S_known shape {S_known_matrix_np.shape}, expected ({n},{nbar})"
+        log.debug(f"{worker_log_prefix} Input matrix dimensions verified.")
+    except AssertionError as e:
+        log.error(f"{worker_log_prefix} Input assertion failed: {e}")
+        return col_j, None
+        
+    # --- Main Worker Logic --- 
+    try:
+        # Calculate target vector b'_j = (b_j - A * s_{j,known}) mod q
+        s_j_known = S_known_matrix_np[:, col_j]
+        b_j = B_np[:, col_j]
+        # --- Log first few values --- 
+        log.debug(f"{worker_log_prefix} s_{col_j}_known[:5]: {s_j_known[:5]}")
+        log.debug(f"{worker_log_prefix} b_{col_j}[:5]: {b_j[:5]}")
+        # -------------------------- 
+        log.debug(f"{worker_log_prefix} Calculating A * s_j_known...")
+        A_s_j_known = (A_np @ s_j_known) % q
+        b_prime_j = (b_j - A_s_j_known + q) % q # Ensure positive result
+        # --- Log first few values --- 
+        log.debug(f"{worker_log_prefix} b'_{col_j}[:5]: {b_prime_j[:5]}")
+        # -------------------------- 
+        log.debug(f"{worker_log_prefix} Calculated b'_j.")
+
+        # Calculate A' = A (mod q) - Skip scaling by M
+        log.debug(f"{worker_log_prefix} Setting A' = A % q ...")
+        A_prime = A_np # Already mod q from prepare_matrices
+        # A_prime = (modulus_approx * A_np) % q # Old scaling
+        log.debug(f"{worker_log_prefix} Set A' = A.")
+
+        # --- Construct the Lattice Basis ---
+        # Standard search-LWE basis: find (s, e) st A's - b' = -e mod q
+        # Dimension n+1
+        basis_list = [[0] * (n + 1) for _ in range(n + 1)]
+        log.info(f"{worker_log_prefix} Constructing basis matrix ({n+1}x{n+1})...")
+        for r in range(n):
+            for c in range(n):
+                basis_list[r][c] = int(A_prime[r, c]) # Convert np int64 potentially
+            basis_list[r][n] = int(b_prime_j[r])
+        basis_list[n][n] = q
+
+        M = IntegerMatrix(n + 1, n + 1)
+        #M.set_matrix(basis_list) # set_matrix might not exist or work this way
+        for r in range(n + 1):
+             for c in range(n + 1):
+                  # Use __setitem__ for IntegerMatrix
+                  M[r, c] = basis_list[r][c]
+
+        log.info(f"{worker_log_prefix} Basis matrix created.")
+
+        # --- Perform Lattice Reduction ---
+        log.info(f"{worker_log_prefix} Starting BKZ reduction (block size {bkz_block_size})...")
+        start_time = time.time()
+        # Use BKZ.reduction, params can be tuned
+        # Pass float type string directly
+        params = BKZ.Param(block_size=bkz_block_size, strategies=None, float_type=bkz_float_type, auto_abort=True)
+        # Wrap reduction in a try-except block
+        try:
+             reduced_basis = BKZ.reduction(M, params)
+             # reduced_basis = LLL.reduction(M) # LLL for faster test
+        except Exception as e_bkz:
+             log.error(f"{worker_log_prefix} BKZ reduction algorithm failed: {e_bkz}")
+             return col_j, None
+        duration = time.time() - start_time
+        log.info(f"{worker_log_prefix} BKZ reduction finished in {duration:.2f}s.")
+
+        # --- Extract Solution ---
+        # Check first few vectors for the expected solution form.
+        log.info(f"{worker_log_prefix} Analyzing first few vectors of reduced basis...")
+        solution_s_unknown = None
+        num_vectors_to_check = 5 # Reduced check range
+
+        for i in range(min(num_vectors_to_check, n + 1)): 
+            log.debug(f"{worker_log_prefix} Checking basis vector {i}")
+            vector_list = [int(reduced_basis[i, c]) for c in range(n + 1)]
+            candidate_vector = np.array(vector_list, dtype=np.int64)
+            last_coord = candidate_vector[n]
+            log.debug(f"{worker_log_prefix} Basis vector {i} last coord: {last_coord}") 
+
+            # Check for exact solution vector (0,...,0, +/-1) first
+            is_zero_vec = not np.any(candidate_vector[:n]) # Check if first n coords are zero
+            if is_zero_vec and abs(last_coord) == 1:
+                log.info(f"{worker_log_prefix} Found exact solution vector {i}: (0, ..., 0, {-last_coord})")
+                potential_s_unknown = candidate_vector[:n] * (-last_coord) # Will be all zeros
+                # Error check should be very small for this case if b' is small
+                e_check = (A_prime @ potential_s_unknown - b_prime_j + q) % q 
+                e_check_signed = np.where(e_check >= q // 2, e_check - q, e_check)
+                max_abs_error = np.max(np.abs(e_check_signed))
+                log.info(f"{worker_log_prefix} Exact Candidate {i} check: Max absolute error = {max_abs_error}")
+                # Use a stricter check? Or assume this is the correct small error vector 'e = -bprime'
+                if max_abs_error < q / 8: # Keep original check for now
+                     log.info(f"{worker_log_prefix} Exact candidate vector {i} verified. Solution is 0.")
+                     solution_s_unknown = potential_s_unknown
+                     break
+                else:
+                    log.warning(f"{worker_log_prefix} Exact candidate {i} failed verification (error too large: {max_abs_error}). Should ideally be close to max(|b'|). Treating as failure.")
+            elif abs(last_coord) == 1:
+                # Check for the standard (s, +/-1) vector
+                log.info(f"{worker_log_prefix} Found candidate vector {i} with last coord {-last_coord} (non-zero s part).")
+                potential_s_unknown = candidate_vector[:n] * (-last_coord)
+
+                # Verification step
+                e_check = (A_prime @ potential_s_unknown - b_prime_j + q) % q
+                e_check_signed = np.where(e_check >= q // 2, e_check - q, e_check)
+                max_abs_error = np.max(np.abs(e_check_signed))
+                log.info(f"{worker_log_prefix} Candidate {i} check: Max absolute error = {max_abs_error}") 
+
+                # Heuristic check for small error 
+                if max_abs_error < q / 8:
+                    log.info(f"{worker_log_prefix} Candidate vector {i} verified (error seems small). Solution found.")
+                    solution_s_unknown = potential_s_unknown
+                    break # Stop searching once a valid solution is found
+                else:
+                    log.warning(f"{worker_log_prefix} Candidate vector {i} failed verification (error too large: {max_abs_error}).")
+
+        if solution_s_unknown is None:
+             log.warning(f"{worker_log_prefix} No suitable solution vector found in the first {num_vectors_to_check} basis vectors.")
+
+    except Exception as e:
+        log.exception(f"{worker_log_prefix} Unexpected error in worker: {e}") # Log full traceback
+        return col_j, None
+
+    return col_j, solution_s_unknown
 
 
 # --- Main Execution ---
@@ -211,7 +341,7 @@ def main():
         return 1
     kem, A_np, B_np, S_known_matrix, q, n, nbar, modulus_approx = prep_result
 
-    # --- [DEBUG] Compare S_known with S_true (if available) ---
+    # --- [DEBUG] Compare S_known with S_true (if available and in single-col mode) --- 
     S_true_matrix = solver_data.get('S_true') # Get S_true if it exists
     S_true_np = None # Initialize S_true_np
     if S_true_matrix is not None:
@@ -246,34 +376,104 @@ def main():
             S_true_np = None # Ensure S_true_np is None if conversion failed
     # --- End Debug Comparison --- 
     
-    # --- "Solve" by using S_known directly --- 
-    log.info("Using S_known_matrix directly as S_recovered_matrix (Lattice solver bypassed)." )
-    S_recovered_matrix = S_known_matrix.copy() # S_known IS the recovered secret
-    all_solved = True # Assume success if S_known was constructed
-    reconstruction_successful_cols = list(range(nbar))
-    
-    # --- Sanity Check (Inline) --- 
-    log.info("Performing inline sanity check: || B - A*S_known || should be small...")
-    try:
-        E = (B_np - (A_np @ S_recovered_matrix) % q + q) % q
-        E_centered = np.where(E >= q//2, E - q, E)
-        max_abs_error_sanity = np.max(np.abs(E_centered))
-        log.info(f"Sanity Check: Max Abs Error = {max_abs_error_sanity}")
-        assert max_abs_error_sanity <= 30, f"Sanity check failed! Max error {max_abs_error_sanity} > 30. Approximations might be wrong."
-        log.info("Sanity check passed.")
-    except Exception as sanity_ex:
-        log.error(f"Error during inline sanity check: {sanity_ex}")
-        # Optionally exit or mark as unsolved if sanity check fails critically
-        # return 1 
+    # --- Solver Bypass Logic REMOVED --- 
+    # Always proceed with actual solver path
+    log.info("Proceeding with actual solver path.")
+    skip_solver = False
+    # Initialize for actual solver run
+    S_recovered_matrix = np.zeros((n, nbar), dtype=np.int64) - 999 
+    all_solved = True # Assume true until a failure
+    reconstruction_successful_cols = []
+    results_map = {}
 
-    # --- Parallel Solving REMOVED --- 
-    # ... (block removed) ...
+    # --- Parallel Solving (conditional) --- 
+    # This block should now run if skip_solver is False
+    if not skip_solver:
+        # >>> UNCOMMENT THE ACTUAL SOLVER EXECUTION <<< 
+        tasks = []
+        columns_to_process = list(range(nbar)) # Default: solve all columns
+        num_workers = args.workers if args.workers is not None else min(multiprocessing.cpu_count(), nbar)
+        
+        if args.target_col is not None:
+            if 0 <= args.target_col < nbar:
+                 columns_to_process = [args.target_col] # Override to solve only target column
+                 log.info(f"--target-col specified: Solving only for column {args.target_col}")
+                 num_workers = 1 # Use only 1 worker for single column mode
+            else:
+                 log.error(f"Invalid target column {args.target_col}. Must be between 0 and {nbar-1}. Exiting.")
+                 return 1 # Exit if target column is invalid
+        elif args.cols is not None: # Handle --cols argument if target-col is not set
+            num_cols_to_solve = min(args.cols, nbar)
+            columns_to_process = list(range(num_cols_to_solve))
+            log.info(f"--cols specified: Solving first {num_cols_to_solve} columns.")
+            num_workers = min(num_workers, num_cols_to_solve) # Adjust workers based on cols
+        else:
+             log.info(f"Solving all {nbar} columns.")
+             num_workers = min(num_workers, nbar) # Adjust workers based on nbar
 
-    # --- Reconstruct Final S Matrix REMOVED --- 
-    # ... (block removed) ...
+        log.info(f"Attempting to solve {len(columns_to_process)} columns using {num_workers} workers.")
+        
+        for j in columns_to_process:
+            tasks.append((j, A_np, B_np, S_known_matrix, q, n, nbar, modulus_approx, args.bkz_block_size, args.bkz_float_type))
+        
+        if not tasks:
+            log.warning("No tasks generated for the solver. Exiting.")
+            return 1
+            
+        start_solve_time = time.time()
+        log.info("Starting parallel lattice reduction...")
+        try:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+                future_to_col = {executor.submit(solve_column_worker, task): task[0] for task in tasks}
+                for future in concurrent.futures.as_completed(future_to_col):
+                    col_j = future_to_col[future]
+                    try:
+                        _, s_j_unknown = future.result() # Get result from worker
+                        results_map[col_j] = s_j_unknown
+                        if s_j_unknown is not None:
+                            log.info(f"Successfully processed column {col_j}.")
+                        else:
+                            # Error logged within worker now
+                            log.warning(f"Worker for column {col_j} returned None (solve likely failed).") 
+                            all_solved = False # Mark as not fully solved if any worker fails
+                    except Exception as exc:
+                        log.error(f'Column {col_j} generated an exception during future.result(): {exc}')
+                        results_map[col_j] = None
+                        all_solved = False # Mark as not fully solved on exception
+        except Exception as pool_exc:
+            log.error(f"Error occurred in ProcessPoolExecutor: {pool_exc}")
+            all_solved = False # Mark as not fully solved on pool error
+        
+        total_solve_time = time.time() - start_solve_time
+        log.info(f"Parallel solving finished in {total_solve_time:.2f}s.")
+        # >>> END OF UNCOMMENTED SOLVER <<< 
+        # pass # Remove explicit pass
+
+    # --- Reconstruct Final S Matrix --- 
+    log.info("Reconstructing final S matrix from solver results...")
+    reconstruction_successful_cols = [] # Initialize list for successfully reconstructed columns
+    columns_to_attempt_reconstruction = list(range(nbar)) if args.target_col is None and args.cols is None else columns_to_process
+
+    for j in columns_to_attempt_reconstruction:
+        s_j_unknown = results_map.get(j) # Get result from solver run
+        if s_j_unknown is not None:
+            try:
+                s_j_known = S_known_matrix[:, j]
+                # Perform the actual reconstruction math
+                s_j_recovered_raw = (s_j_known + modulus_approx * s_j_unknown) # Raw reconstruction
+                s_j_final = np.where(s_j_recovered_raw % q >= q // 2, (s_j_recovered_raw % q) - q, s_j_recovered_raw % q)
+                S_recovered_matrix[:, j] = s_j_final
+                log.info(f"Reconstructed column {j}.") 
+                reconstruction_successful_cols.append(j)
+            except Exception as recon_exc:
+                log.error(f"Error reconstructing column {j}: {recon_exc}")
+                all_solved = False # Mark as not fully solved if reconstruction fails
+        else:
+            # If s_j_unknown is None, it means the solver failed for this column
+            # We already set all_solved = False when the worker returned None or raised exception
+            log.error(f"Column {j} data missing from solver results. Cannot reconstruct.")
 
     # --- Final Verification --- 
-    # This now verifies the result using S_known as S_recovered
     log.info("Performing final verification: Check if || B - AS_recovered || is small...")
     try:
         B_check = (A_np @ S_recovered_matrix) % q 
@@ -293,7 +493,7 @@ def main():
         log.error(f"Error during final verification check: {final_verify_exc}")
 
     # --- Output Results ---
-    # Save the recovered S matrix (which is S_known)
+    # Save the recovered S matrix (potentially useful even if incomplete)
     output_S_filename = f"recovered_S_{args.uid}.npy"
     try:
         np.save(output_S_filename, S_recovered_matrix)
