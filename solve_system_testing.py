@@ -254,18 +254,21 @@ def solve_column_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, int
         log.info(f"{worker_log_prefix} Analyzing first few vectors of reduced basis...")
         solution_s_unknown = None
         
-        # Determine number of vectors to check based on block size
-        if bkz_block_size <= 20:
-            num_vectors_to_check = 5
-        elif bkz_block_size <= 40:
-            num_vectors_to_check = 10
-        elif bkz_block_size <= 60:
-            num_vectors_to_check = 15
-        else: # bkz_block_size > 60
-            num_vectors_to_check = 20
+        # Determine number of vectors to check based on block size, increasing with block size
+        base_check = 5
+        increment_per_10_bs = 2 
+        # Calculate how many increments of 10 over the base block size (e.g., 20)
+        increments = max(0, (bkz_block_size - 20) // 10)
+        num_vectors_to_check = base_check + (increments * increment_per_10_bs)
+
+        # Error if we try to check more vectors than exist in the basis
+        if num_vectors_to_check > n + 1:
+            log.error(f"{worker_log_prefix} Calculated number of vectors to check ({num_vectors_to_check}) exceeds the basis size ({n+1}).")
+            return col_j, None
+        
         log.info(f"{worker_log_prefix} Checking first {num_vectors_to_check} basis vectors (Block size: {bkz_block_size}).")
 
-        for i in range(min(num_vectors_to_check, n + 1)): 
+        for i in range(num_vectors_to_check): # Use the calculated number
             log.debug(f"{worker_log_prefix} Checking basis vector {i}")
             vector_list = [int(reduced_basis[i, c]) for c in range(n + 1)]
             candidate_vector = np.array(vector_list, dtype=np.int64)
@@ -324,12 +327,12 @@ def main():
     parser.add_argument("uid", type=str, help="User ID for which to load solver data.")
     parser.add_argument("--cols", type=int, default=None, help="Number of columns (0 to nbar-1) to solve (default: all).")
     parser.add_argument("-w", "--workers", type=int, default=None, help="Number of parallel workers (default: number of CPU cores).")
-    parser.add_argument("--bkz-block-size", type=int, default=20, help="BKZ block size parameter (higher is slower but stronger).")
+    parser.add_argument("--bkz-block-size", type=int, default=20, help="The starting BKZ block size parameter (higher is slower but stronger).")
     # Add argument for float type precision if needed
     parser.add_argument("--bkz-float-type", choices=['d', 'dd', 'qd', 'mp'], default='mp', help="Floating point precision for BKZ (d=double, dd=double-double, qd=quad-double, mp=MPFR). 'mp' recommended.")
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO", help="Set logging level.")
     parser.add_argument("--target-col", type=int, default=None, help="Solve only for a specific column index j.")
-    parser.add_argument("--retry-bkz-increment", type=int, default=20, help="Increase BKZ block size by this amount for failed columns and retry (0 to disable).")
+    parser.add_argument("--max-retry-bkz-size", type=int, default=80, help="Maximum BKZ block size to attempt during retries.")
     args = parser.parse_args()
 
     log.setLevel(getattr(logging, args.log_level.upper()))
@@ -442,11 +445,18 @@ def main():
     # --- Looping Retry for Failed Columns ---
     failed_columns = [j for j in columns_to_process if results_map.get(j) is None]
     current_retry_block_size = args.bkz_block_size # Start from initial size
+    retry_enabled = args.max_retry_bkz_size > args.bkz_block_size # Only retry if max > start
     
-    while failed_columns and args.retry_bkz_increment > 0:
-        current_retry_block_size += args.retry_bkz_increment
+    while failed_columns and retry_enabled:
+        next_block_size = current_retry_block_size * 2 # Double for next attempt
         
-        log.info(f"--- Retrying {len(failed_columns)} failed columns ({failed_columns}) with BKZ block size {current_retry_block_size} ---")
+        if next_block_size > args.max_retry_bkz_size:
+            log.warning(f"Next retry block size ({next_block_size}) would exceed max ({args.max_retry_bkz_size}). Stopping retries for columns: {failed_columns}")
+            break
+            
+        # Update block size for this retry attempt
+        current_retry_block_size = next_block_size
+        log.info(f"--- Retrying {len(failed_columns)} failed columns ({failed_columns}) with DOUBLED BKZ block size {current_retry_block_size} ---")
         
         retry_tasks = []
         for j in failed_columns:
@@ -484,7 +494,7 @@ def main():
         
     if failed_columns:
          log.error(f"Columns {failed_columns} failed to solve even after retrying up to block size {current_retry_block_size}.")
-    elif args.retry_bkz_increment > 0:
+    elif retry_enabled and not failed_columns:
          log.info("All columns successfully processed (potentially after retries).")
 
     # --- Reconstruct Final S Matrix ---
