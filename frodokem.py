@@ -27,6 +27,91 @@ class FrodoKEM(object):
         else:
             assert "Unknown variant"
         # warnings.warn("WARNING: This Python3 implementation of FrodoKEM is not designed to be fast or secure, and may leak secret information via timing or other side channels; it should not be used in production environments.")
+    def setParamsFrodoSmall(self):
+        """Set the parameters for Frodo640"""
+        # FrodoKEM specification, Table 3
+
+
+        ##SCHREYER- we dont touch the error distribution, since we didnt touch q this should be fine?
+        #the errors will be the same size relative to the modulus atleast?
+        #Really the error might be too weak? since we have less matrix entries total but the error is the same size. Shouldnt really stop us from testing the attack though to ignore all error terms? as long as we act
+        #like they are there and so do the attack that works even with error
+        self.error_distribution = (9288, 8720, 7216, 5264, 3384, 1918, 958, 422, 164, 56, 17, 4, 1)
+        self.T_chi = FrodoKEM.__cdf_zero_centred_symmetric(self.error_distribution)
+        # FrodoKEM specification, Table 4
+
+
+        ##2.2 Algorithm description FrodoKEM-specification-20210604.pdf
+        #This is the size of q ie q = 2^D
+        self.D = 15
+
+        #This is small enough already, smaller than a c-int good enough
+        self.q = 32768
+
+        #n = 0 mod 8 according to docs, but maybe this is only because its supposed
+        #to divisible by mbar,nbar the keydata block, so Instead take 4x8 to be safe
+        self.n = 32
+
+
+        #SCHREYER-SMALL now we have 4x4x2 = 32 bits
+        #To make this compatible with AES128 we append 0^96 onto the 32 bits to effectivley
+        #reduce the key length
+        self.nbar = 4
+        self.mbar = 4
+
+
+        self.B = 2
+        self.len_seedA = 128
+        self.len_z = 128
+
+        ##SCHREYER ss = mu is an assignment, sincec mu is just hte encapsulated message which is the shared secret they use PKE to establish
+        self.len_mu = 32
+
+        self.len_seedSE = 256
+        self.len_salt = 256
+        
+        ##SCHREYER
+        ##Unsure so left alone. Lengths seem unimportant as s,k go in hashes and in FO commented stuff?
+        self.len_s = 128
+        self.len_k = 128
+
+        ##Keep the hash the same size doesnt mess with attack
+        self.len_pkh = 128
+
+        ##SCHREYER- shared secret is no 4x4x2 = 32 bits
+        self.len_ss = 32
+
+
+        self.len_chi = 16
+        self.len_seedA_bytes = int(self.len_seedA / 8)
+        self.len_z_bytes = int(self.len_z / 8)
+        self.len_mu_bytes = int(self.len_mu / 8)
+        self.len_seedSE_bytes = int(self.len_seedSE / 8)
+        self.len_salt_bytes = int(self.len_salt / 8)
+        self.len_s_bytes = int(self.len_s / 8)
+        self.len_k_bytes = int(self.len_k / 8)
+        self.len_pkh_bytes = int(self.len_pkh / 8)
+        self.len_ss_bytes = int(self.len_ss / 8)
+        self.len_chi_bytes = int(self.len_chi / 8)
+        self.shake = FrodoKEM.__shake128
+        # FrodoKEM specification, Table 5
+        #640 x 8 x 16/ 8 + 128/8 + 128/8 = n x nbar x 2bytes (gt D = 15) + 128 pubkey hash + 128 secret key + pk = 10272 + 9616
+        #now its 32 * 4 * 16 / 8 + 128/8 + 128/8  + 256 = 544
+        #we left alone s and the hash
+        self.len_sk_bytes = 544
+
+
+        ##SCHREYER
+        #128/8 + 640 * 8 * 15 /8 for frodo 640, here we have 128 / 8 (matrix gen the same) + 32 x 4 x 15 / 8 = seedAbytes + [sizeof(b) = nbar x n x D]
+        self.len_pk_bytes = 256
+
+        ##SCHREYER (8 * 8 * 15 + 640 * 8 * 15)/8 = 9720, + a 32 byte salt
+        #  We now have (4 * 4 * 15 + 32 * 4 * 15)/ 8, + a 32 byte salt
+        ## the salt only gets hashed to avoid replay attacks etc so changing its size wont make the attack work different
+        self.len_ct_bytes = 302
+        ##Schreyer
+        ##Now nbarxsbarxB = 4x4x2 = 32 = 4bytes
+        self.len_ss_bytes = 4
 
     def setParamsFrodo640(self):
         """Set the parameters for Frodo640"""
