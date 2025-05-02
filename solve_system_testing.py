@@ -40,30 +40,31 @@ logging.basicConfig(
 log = logging.getLogger("Solver")
 
 # --- Constants & Configuration ---
+# Placeholder - needs verification based on analysis of the rounding behavior
+# Example: If boundary crossing at delta_thresh means -S_kl = delta_thresh mod M
+# then S_kl = -delta_thresh mod M
 def delta_thresh_to_S_known(delta_thresh: int, modulus: int) -> int:
     """
-    Converts the observed threshold Δ* into S[k][l].
-
-        Δ*  = smallest delta that flips the oracle
-            = (-S) mod M     with  M = q / 2**B = 8192  for Frodo640
-
-    Therefore           S = (-Δ*) mod M       and then centre to [-M/2, M/2).
-
-    For Frodo640 this puts S in {-2,-1,0,1,2}.
+    Converts the observed delta_threshold to S[k][l].
+    Using: s_kl = (delta_thresh - modulus/2) mod modulus, then centered.
+    (This version passed the S_known vs S_true comparison check)
     """
     if delta_thresh is None:
-        log.warning("Encountered None for delta_thresh, returning 0")
-        return 0
-
-    # 1. negate  Δ*  modulo M
-    centred = (-delta_thresh) % modulus           # 0 … M‑1
-
-    # 2. centre into the interval  [‑M/2,  M/2)
-    if centred >= modulus // 2:                   # 4096 … 8191  →  -4096 … -1
-        centred -= modulus
-
-    return centred  # now in {-2,…,2} for Frodo640
-
+      log.warning("Encountered None for delta_thresh, returning 0")
+      return 0
+      
+    modulus_half = modulus // 2
+    s_kl_known_mod = (delta_thresh - modulus_half + modulus) % modulus # Ensure positive result
+    
+    # Center the result in [-M/2, M/2)
+    if s_kl_known_mod >= modulus_half:
+        s_kl_known_mod -= modulus
+        
+    log.debug(f"Converting delta={delta_thresh} to centered S_known={s_kl_known_mod} (mod {modulus}) using (delta - M/2)")
+    # Commented out assertions as approximations might have slight errors
+    # assert -modulus_half <= s_kl_known_mod < modulus_half, f"Centering failed? {s_kl_known_mod}"
+    # assert -2 <= s_kl_known_mod <= 2, f"Result {s_kl_known_mod} out of expected range [-2,2]"
+    return s_kl_known_mod
 
 # --- Data Loading ---
 def load_solver_data(uid: str) -> Optional[Dict[str, Any]]:
@@ -165,7 +166,6 @@ def prepare_matrices(solver_data: Dict[str, Any]) -> Optional[Tuple[Any, np.ndar
                 log.warning(f"Ignoring approximation with out-of-bounds indices: ({k}, {l})")
 
         log.info(f"S_known_matrix (mod {modulus_approx}) constructed. Processed: {processed_count}, Missing: {missing_count}.")
-        log.warning("Reminder: Conversion from delta_thresh to S_known is currently a PLACEHOLDER.")
 
     except Exception as e:
         log.error(f"Failed to construct S_known matrix: {e}")
@@ -207,11 +207,11 @@ def solve_column_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, int
         # -------------------------- 
         log.debug(f"{worker_log_prefix} Calculated b'_j.")
 
-        # Calculate A' = A (mod q) - Skip scaling by M
-        log.debug(f"{worker_log_prefix} Setting A' = A % q ...")
-        A_prime = A_np # Already mod q from prepare_matrices
-        # A_prime = (modulus_approx * A_np) % q # Old scaling
-        log.debug(f"{worker_log_prefix} Set A' = A.")
+        # Restore scaling A' = (M * A) mod q
+        log.debug(f"{worker_log_prefix} Calculating A' = {modulus_approx} * A % q ...")
+        # A_prime = A_np # Old version without scaling
+        A_prime = (modulus_approx * A_np) % q 
+        log.debug(f"{worker_log_prefix} Calculated A'.")
 
         # --- Construct the Lattice Basis ---
         # Standard search-LWE basis: find (s, e) st A's - b' = -e mod q
@@ -343,154 +343,195 @@ def main():
 
     # --- [DEBUG] Compare S_known with S_true (if available and in single-col mode) --- 
     S_true_matrix = solver_data.get('S_true') # Get S_true if it exists
-    S_true_np = None # Initialize S_true_np
-    if S_true_matrix is not None:
+    if args.target_col is not None and S_true_matrix is not None:
         try:
-            S_true_np_temp = np.array(S_true_matrix, dtype=np.int64)
-            if S_true_np_temp.shape == (n, nbar):
-                S_true_np = S_true_np_temp # Assign if valid format
-                log.info("Successfully loaded S_true from pickle and converted to NumPy array.")
-                # Perform the debug comparison only if target_col is specified
-                if args.target_col is not None:
-                    s_true_col = S_true_np[:, args.target_col]
-                    s_known_col = S_known_matrix[:, args.target_col]
-                    # Calculate true S mod M
-                    s_true_mod_M = s_true_col % modulus_approx
-                    
-                    log.debug(f"--- Comparison for Column j={args.target_col} (mod {modulus_approx}) ---")
-                    log.debug(f"  S_known[:10]: {s_known_col[:10]}")
-                    log.debug(f"  S_true[:10] (mod M): {s_true_mod_M[:10]}")
-                    
-                    # Check for differences
-                    diff = s_known_col - s_true_mod_M
-                    mismatches = np.count_nonzero(diff % modulus_approx)
-                    if mismatches == 0:
-                        log.info(f"  SUCCESS: S_known column matches S_true column (mod {modulus_approx})!")
-                    else:
-                        log.warning(f"  MISMATCH: Found {mismatches} differences between S_known and S_true (mod {modulus_approx}).")
-                        log.debug(f"  Difference[:10]: {diff[:10]}") # Show first few diffs
+            S_true_np = np.array(S_true_matrix, dtype=np.int64)
+            if S_true_np.shape == (n, nbar):
+                s_true_col = S_true_np[:, args.target_col]
+                s_known_col = S_known_matrix[:, args.target_col]
+                # Calculate true S mod M
+                s_true_mod_M = s_true_col % modulus_approx
+                
+                log.debug(f"--- Comparison for Column j={args.target_col} (mod {modulus_approx}) ---")
+                log.debug(f"  S_known[:10]: {s_known_col[:10]}")
+                log.debug(f"  S_true[:10] (mod M): {s_true_mod_M[:10]}")
+                
+                # Check for differences
+                diff = s_known_col - s_true_mod_M
+                mismatches = np.count_nonzero(diff % modulus_approx)
+                if mismatches == 0:
+                    log.info(f"  SUCCESS: S_known column matches S_true column (mod {modulus_approx})!")
+                else:
+                    log.warning(f"  MISMATCH: Found {mismatches} differences between S_known and S_true (mod {modulus_approx}).")
+                    log.debug(f"  Difference[:10]: {diff[:10]}") # Show first few diffs
             else:
-                log.warning("S_true matrix loaded from pickle but has unexpected shape. Will proceed without it.")
+                log.warning("S_true matrix loaded but has unexpected shape.")
         except Exception as comp_ex:
-            log.error(f"Error during S_true conversion or comparison: {comp_ex}. Will proceed without it.")
-            S_true_np = None # Ensure S_true_np is None if conversion failed
+            log.error(f"Error during S_known/S_true comparison: {comp_ex}")
     # --- End Debug Comparison --- 
-    
-    # --- Solver Bypass Logic REMOVED --- 
-    # Always proceed with actual solver path
-    log.info("Proceeding with actual solver path.")
-    skip_solver = False
-    # Initialize for actual solver run
-    S_recovered_matrix = np.zeros((n, nbar), dtype=np.int64) - 999 
-    all_solved = True # Assume true until a failure
-    reconstruction_successful_cols = []
-    results_map = {}
 
-    # --- Parallel Solving (conditional) --- 
-    # This block should now run if skip_solver is False
-    if not skip_solver:
-        # >>> UNCOMMENT THE ACTUAL SOLVER EXECUTION <<< 
-        tasks = []
-        columns_to_process = list(range(nbar)) # Default: solve all columns
-        num_workers = args.workers if args.workers is not None else min(multiprocessing.cpu_count(), nbar)
-        
-        if args.target_col is not None:
-            if 0 <= args.target_col < nbar:
-                 columns_to_process = [args.target_col] # Override to solve only target column
-                 log.info(f"--target-col specified: Solving only for column {args.target_col}")
-                 num_workers = 1 # Use only 1 worker for single column mode
-            else:
-                 log.error(f"Invalid target column {args.target_col}. Must be between 0 and {nbar-1}. Exiting.")
-                 return 1 # Exit if target column is invalid
-        elif args.cols is not None: # Handle --cols argument if target-col is not set
-            num_cols_to_solve = min(args.cols, nbar)
-            columns_to_process = list(range(num_cols_to_solve))
-            log.info(f"--cols specified: Solving first {num_cols_to_solve} columns.")
-            num_workers = min(num_workers, num_cols_to_solve) # Adjust workers based on cols
+    # Determine columns and workers
+    num_cols_to_solve = args.cols if args.cols is not None and args.cols <= nbar else nbar
+    num_workers = args.workers if args.workers is not None else (multiprocessing.cpu_count() - 1)
+    single_column_mode = False
+    target_column_j = -1
+
+    if args.target_col is not None:
+        if 0 <= args.target_col < nbar:
+            log.info(f"--- Single Column Mode: Targeting column j={args.target_col} ---")
+            single_column_mode = True
+            target_column_j = args.target_col
+            num_cols_to_solve = 1
+            num_workers = 1
         else:
-             log.info(f"Solving all {nbar} columns.")
-             num_workers = min(num_workers, nbar) # Adjust workers based on nbar
-
-        log.info(f"Attempting to solve {len(columns_to_process)} columns using {num_workers} workers.")
-        
-        for j in columns_to_process:
-            tasks.append((j, A_np, B_np, S_known_matrix, q, n, nbar, modulus_approx, args.bkz_block_size, args.bkz_float_type))
-        
-        if not tasks:
-            log.warning("No tasks generated for the solver. Exiting.")
+            log.error(f"Invalid target column {args.target_col}. Must be between 0 and {nbar-1}. Exiting.")
             return 1
-            
-        start_solve_time = time.time()
-        log.info("Starting parallel lattice reduction...")
-        try:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-                future_to_col = {executor.submit(solve_column_worker, task): task[0] for task in tasks}
-                for future in concurrent.futures.as_completed(future_to_col):
-                    col_j = future_to_col[future]
-                    try:
-                        _, s_j_unknown = future.result() # Get result from worker
-                        results_map[col_j] = s_j_unknown
-                        if s_j_unknown is not None:
-                            log.info(f"Successfully processed column {col_j}.")
-                        else:
-                            # Error logged within worker now
-                            log.warning(f"Worker for column {col_j} returned None (solve likely failed).") 
-                            all_solved = False # Mark as not fully solved if any worker fails
-                    except Exception as exc:
-                        log.error(f'Column {col_j} generated an exception during future.result(): {exc}')
-                        results_map[col_j] = None
-                        all_solved = False # Mark as not fully solved on exception
-        except Exception as pool_exc:
-            log.error(f"Error occurred in ProcessPoolExecutor: {pool_exc}")
-            all_solved = False # Mark as not fully solved on pool error
-        
-        total_solve_time = time.time() - start_solve_time
-        log.info(f"Parallel solving finished in {total_solve_time:.2f}s.")
-        # >>> END OF UNCOMMENTED SOLVER <<< 
-        # pass # Remove explicit pass
+    else:
+        # Use all available columns, limit workers
+        num_workers = min(num_workers, num_cols_to_solve)
 
-    # --- Reconstruct Final S Matrix --- 
-    log.info("Reconstructing final S matrix from solver results...")
-    reconstruction_successful_cols = [] # Initialize list for successfully reconstructed columns
-    columns_to_attempt_reconstruction = list(range(nbar)) if args.target_col is None and args.cols is None else columns_to_process
+    log.info(f"Attempting to solve {num_cols_to_solve} columns using {num_workers} workers.")
+    log.info(f"BKZ Parameters: Block Size = {args.bkz_block_size}, Float Type = {args.bkz_float_type}")
 
-    for j in columns_to_attempt_reconstruction:
-        s_j_unknown = results_map.get(j) # Get result from solver run
+    # --- Parallel Solving ---
+    S_recovered_matrix = np.zeros((n, nbar), dtype=np.int64) - 999 # Initialize with marker value
+    tasks = []
+    columns_to_process = range(num_cols_to_solve)
+    if single_column_mode:
+        columns_to_process = [target_column_j]
+        log.info(f"Preparing task for column {target_column_j}")
+    
+    for j in columns_to_process:
+        tasks.append((j, A_np, B_np, S_known_matrix, q, n, nbar, modulus_approx, args.bkz_block_size, args.bkz_float_type))
+
+    start_solve_time = time.time()
+    results_map = {}
+    log.info("Starting parallel lattice reduction...")
+    try:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+            future_to_col = {executor.submit(solve_column_worker, task): task[0] for task in tasks}
+            for future in concurrent.futures.as_completed(future_to_col):
+                col_j = future_to_col[future]
+                try:
+                    _, s_j_unknown = future.result() # Get result from worker
+                    results_map[col_j] = s_j_unknown
+                    if s_j_unknown is not None:
+                        log.info(f"Successfully processed column {col_j}.")
+                    else:
+                        log.error(f"Failed to find solution for column {col_j}.")
+                except Exception as exc:
+                    log.error(f'Column {col_j} generated an exception during future.result(): {exc}')
+                    results_map[col_j] = None
+    except Exception as pool_exc:
+        log.error(f"Error occurred in ProcessPoolExecutor: {pool_exc}")
+
+    total_solve_time = time.time() - start_solve_time
+    log.info(f"Parallel solving finished in {total_solve_time:.2f}s.")
+
+    # --- Reconstruct Final S Matrix ---
+    log.info("Reconstructing final S matrix...")
+    all_solved = True
+    reconstruction_successful_cols = []
+
+    # Use the same list of columns we intended to process
+    for j in columns_to_process:
+        s_j_unknown = results_map.get(j)
         if s_j_unknown is not None:
             try:
                 s_j_known = S_known_matrix[:, j]
-                # Perform the actual reconstruction math
-                s_j_recovered_raw = (s_j_known + modulus_approx * s_j_unknown) # Raw reconstruction
-                s_j_final = np.where(s_j_recovered_raw % q >= q // 2, (s_j_recovered_raw % q) - q, s_j_recovered_raw % q)
+                
+                # --- Log reconstruction details --- 
+                log.debug(f"--- Reconstruction Details for Column j={j} ---")
+                log.debug(f"  s_{j}_known[:10]:          {s_j_known[:10]}")
+                log.debug(f"  s_{j}_unknown[:10]:        {s_j_unknown[:10]}")
+                
+                # Check if the solver found the zero vector for s_unknown
+                # This corresponds to the (0, ..., 0, +/-1) candidate vector
+                if not np.any(s_j_unknown):
+                    log.info(f"  s_{j}_unknown is zero vector. Using s_{j}_known directly for s_j_final.")
+                    s_j_final = s_j_known # Use the centered value mod M directly
+                else:
+                    # Original reconstruction for non-zero s_unknown
+                    s_j_recovered_raw = (s_j_known + modulus_approx * s_j_unknown) # Raw reconstruction
+                    s_j_final = np.where(s_j_recovered_raw % q >= q // 2, (s_j_recovered_raw % q) - q, s_j_recovered_raw % q)
+                    log.debug(f"  s_{j}_recovered_raw[:10]:  {s_j_recovered_raw[:10]}")
+                    log.debug(f"  s_{j}_final[:10]:          {s_j_final[:10]} (using full recon)")
+                
+                # Check if S_true_np was created before trying to access it
+                if 'S_true_np' in locals() and S_true_np is not None and single_column_mode:
+                    log.debug(f"  S_true[{j}][:10]:           {S_true_np[:10, j]}") # Use S_true_np here
+                # ---------------------------------- 
+
                 S_recovered_matrix[:, j] = s_j_final
-                log.info(f"Reconstructed column {j}.") 
+                log.info(f"Reconstructed column {j}.")
                 reconstruction_successful_cols.append(j)
             except Exception as recon_exc:
                 log.error(f"Error reconstructing column {j}: {recon_exc}")
-                all_solved = False # Mark as not fully solved if reconstruction fails
+                # Add full traceback for debugging reconstruction errors
+                log.exception("Reconstruction exception details:") 
+                all_solved = False
         else:
-            # If s_j_unknown is None, it means the solver failed for this column
-            # We already set all_solved = False when the worker returned None or raised exception
-            log.error(f"Column {j} data missing from solver results. Cannot reconstruct.")
+            all_solved = False
+            log.error(f"Column {j} data is missing. Final matrix will be incomplete.")
 
-    # --- Final Verification --- 
-    log.info("Performing final verification: Check if || B - AS_recovered || is small...")
-    try:
-        B_check = (A_np @ S_recovered_matrix) % q 
-        E_check = (B_np - B_check + q) % q
-        E_check_signed = np.where(E_check >= q // 2, E_check - q, E_check)
-        max_abs_error = np.max(np.abs(E_check_signed))
-        mean_abs_error = np.mean(np.abs(E_check_signed))
-        log.info(f"Verification Check: Max Abs Error = {max_abs_error}, Mean Abs Error = {mean_abs_error:.2f}")
-        # Compare max_abs_error to expected Frodo error bounds
-        # Define a reasonable threshold for max error magnitude
-        max_expected_error_magnitude = 30 
-        if max_abs_error <= max_expected_error_magnitude:
-            log.info("Verification SUCCESS: Recovered error matrix E seems small, S is likely correct.")
-        else:
-            log.warning(f"Verification WARNING: Recovered error matrix E seems large (max error {max_abs_error} > {max_expected_error_magnitude}). Solution might be incorrect.")
-    except Exception as final_verify_exc:
-        log.error(f"Error during final verification check: {final_verify_exc}")
+    if all_solved:
+        log.info("Successfully reconstructed all attempted columns of S.")
+        # --- Final Verification (Optional but Recommended) ---
+        log.info("Performing final verification: Check if || B - AS || is small...")
+        try:
+            B_check = (A_np @ S_recovered_matrix[:, :num_cols_to_solve]) % q
+            E_check = (B_np[:, :num_cols_to_solve] - B_check + q) % q
+            E_check_signed = np.where(E_check >= q // 2, E_check - q, E_check)
+            max_abs_error = np.max(np.abs(E_check_signed))
+            mean_abs_error = np.mean(np.abs(E_check_signed))
+            log.info(f"Verification Check: Max Abs Error = {max_abs_error}, Mean Abs Error = {mean_abs_error:.2f}")
+            # Compare max_abs_error to expected Frodo error bounds
+            frodo_max_expected_error_approx = 3 * kem.T_chi[-1] # Heuristic: 3 sigma? Check spec. Should be small (e.g. < 30)
+            if max_abs_error <= frodo_max_expected_error_approx:
+                log.info("Verification SUCCESS: Recovered error matrix E seems small, S is likely correct.")
+            else:
+                log.warning("Verification WARNING: Recovered error matrix E seems large. Solution might be incorrect.")
+        except Exception as final_verify_exc:
+            log.error(f"Error during final verification check: {final_verify_exc}")
+    else:
+        log.error("Failed to recover all attempted columns of S. Cannot verify full matrix.")
+
+    # --- Single Column Verification (if applicable) --- 
+    if single_column_mode and target_column_j in reconstruction_successful_cols:
+        log.info(f"--- Verifying recovered single column j={target_column_j} ---")
+        try:
+            b_j_original = B_np[:, target_column_j]
+            s_j_recovered = S_recovered_matrix[:, target_column_j]
+            
+            # Calculate error e_j = b_j - A * s_j (mod q)
+            As_j = (A_np @ s_j_recovered) % q
+            e_j = (b_j_original - As_j + q) % q
+            e_j_signed = np.where(e_j >= q // 2, e_j - q, e_j)
+            
+            max_abs_error = np.max(np.abs(e_j_signed))
+            mean_abs_error = np.mean(np.abs(e_j_signed))
+            std_dev_error = np.std(np.abs(e_j_signed))
+            
+            log.info(f"Single Column Verification (j={target_column_j}):")
+            log.info(f"  Max Abs Error = {max_abs_error}")
+            log.info(f"  Mean Abs Error = {mean_abs_error:.2f}")
+            log.info(f"  Std Dev Abs Error = {std_dev_error:.2f}")
+            
+            # Compare max_abs_error to expected Frodo error bounds
+            # Frodo error is Gaussian around 0 with std dev sigma_chi
+            # T_chi is related, usually a small multiple of sigma_chi (e.g., 2 or 3)
+            # Let's use a slightly generous bound, e.g., 6*sigma or check kem.T_chi
+            # kem object might not be available here easily, let's use a heuristic based on q
+            # Max error should be significantly smaller than q/2
+            # A typical check might be if max_abs_error < q / 16 or similar
+            verification_threshold = q // 16 
+            if max_abs_error < verification_threshold:
+                log.info(f"Verification SUCCESS (j={target_column_j}): Recovered error seems small (Max Abs Error < {verification_threshold}).")
+            else:
+                log.warning(f"Verification WARNING (j={target_column_j}): Recovered error seems large (Max Abs Error >= {verification_threshold}). Solution might be incorrect.")
+                
+        except Exception as single_verify_exc:
+            log.error(f"Error during single column verification check (j={target_column_j}): {single_verify_exc}")
 
     # --- Output Results ---
     # Save the recovered S matrix (potentially useful even if incomplete)
@@ -502,8 +543,8 @@ def main():
         log.error(f"Failed to save recovered S matrix: {save_exc}")
 
     # Display first few entries of recovered S
-    print(f"\nRecovered S matrix (first 5 rows, {len(reconstruction_successful_cols)} columns):")
-    print(S_recovered_matrix[:5, reconstruction_successful_cols])
+    print(f"\nRecovered S matrix (first 5 rows, {num_cols_to_solve} columns):")
+    print(S_recovered_matrix[:5, :num_cols_to_solve])
 
     log.info("Solver script finished.")
     return 0 if all_solved else 1

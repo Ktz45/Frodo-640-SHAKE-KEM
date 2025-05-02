@@ -19,33 +19,20 @@ logging.basicConfig(level=logging.INFO,
 log = logging.getLogger("VerifyView")
 
 def load_student_data(uid):
-    """Loads sk_hex from the student file."""
+    """Loads pk_hex and sk_hex from the student file."""
     filename = os.path.join('student_files', f"{uid}.txt")
     log.info(f"Loading data from student file: {filename}")
     if not os.path.exists(filename):
         log.error(f"Student file not found: {filename}")
-        return None
+        return None, None
     try:
         with open(filename, 'r') as file:
             content = file.read()
-            # Find the line starting with Secret Key: and extract hex
-            sk_hex = None
-            for line in content.splitlines():
-                if line.startswith("Secret Key:"):
-                    # Strip label and potential whitespace, take the rest
-                    sk_hex = line.split("Secret Key:", 1)[1].strip()
-                    break # Found it
-            
-            if sk_hex:
-                log.info("Successfully loaded SK hex.")
-                # Debug: Print length and start/end
-                log.debug(f"Loaded sk_hex length: {len(sk_hex)}")
-                log.debug(f"Loaded sk_hex starts: {sk_hex[:64]}...")
-                log.debug(f"Loaded sk_hex ends: ...{sk_hex[-64:]}")
-                return sk_hex
-            else:
-                log.error(f"Could not find 'Secret Key:' line in {filename}")
-                return None
+            # Assuming PK is needed for KEM init indirectly via sk parsing if needed
+            # pk_hex = content.split('Public Key: ')[1].split('\n')[0]
+            sk_hex = content.split('Secret Key: ')[1].split('\n')[0]
+            log.info("Successfully loaded SK hex.")
+            return sk_hex # Only need sk_hex for S parsing
     except Exception as e:
         log.error(f"Error reading or parsing student file {filename}: {e}")
         return None
@@ -56,32 +43,18 @@ def parse_true_S(kem: FrodoKEM, sk_hex: str) -> np.ndarray | None:
     try:
         sk_bytes = bytes.fromhex(sk_hex)
         if len(sk_bytes) != kem.len_sk_bytes:
-            log.error(f"SK length mismatch! Actual: {len(sk_bytes)} bytes ({len(sk_hex)} hex), Expected: {kem.len_sk_bytes} bytes.")
-            return None
+             log.error(f"SK length mismatch in data: {len(sk_bytes)} vs expected {kem.len_sk_bytes}")
+             return None
 
         # Calculate offset and length for S^T based on KEM parameters
-        # sk = s || seedA || b || S^T || pkh
-        offset_s = 0
-        len_s = kem.len_s_bytes
-        offset_seedA = offset_s + len_s
-        len_seedA = kem.len_seedA_bytes
-        offset_b = offset_seedA + len_seedA
-        len_b = int(kem.D * kem.n * kem.nbar / 8)
-        offset_St = offset_b + len_b
-        len_St = int(kem.n * kem.nbar * 16 / 8) # 16 bits per element
-        offset_pkh = offset_St + len_St
-        len_pkh = kem.len_pkh_bytes
+        offset = kem.len_s_bytes + kem.len_seedA_bytes + int(kem.D * kem.n * kem.nbar / 8)
+        length = int(kem.n * kem.nbar * 16 / 8)
         
-        # Assert total length matches
-        assert offset_pkh + len_pkh == kem.len_sk_bytes, "Internal length calculation mismatch!"
-        
-        log.debug(f"Calculated S^T offset: {offset_St}, length: {len_St}")
-
-        if offset_St + len_St > len(sk_bytes):
+        if offset + length > len(sk_bytes):
             log.error("Calculated offset/length for S^T exceeds secret key bounds.")
             return None
             
-        Sbytes_stream = bitstring.ConstBitStream(sk_bytes[offset_St : offset_St + len_St])
+        Sbytes_stream = bitstring.ConstBitStream(sk_bytes[offset : offset + length])
 
         Stransposed = [[0 for _ in range(kem.n)] for _ in range(kem.nbar)]
         for i in range(kem.nbar):
@@ -91,12 +64,9 @@ def parse_true_S(kem: FrodoKEM, sk_hex: str) -> np.ndarray | None:
         # Transpose S^T to get S (n x nbar)
         S_true_list = [[Stransposed[j][i] for j in range(kem.nbar)] for i in range(kem.n)]
         S_true_np = np.array(S_true_list, dtype=np.int64) # Use int64 for potential negative values
-        log.info(f"Successfully parsed true S matrix ({S_true_np.shape}) from sk_hex.")
+        log.info(f"Successfully parsed true S matrix ({S_true_np.shape}).")
         return S_true_np
             
-    except ValueError as e:
-        log.error(f"Error decoding secret key hex: {e}. Is it valid hex?")
-        return None
     except Exception as e:
         log.error(f"Error parsing true S from secret key hex: {e}")
         return None
@@ -116,16 +86,13 @@ def print_comparison_matrix(matrix, comparison_results):
         log.info(f"Displaying Matrix shape: ({rows}x{cols})")
 
         # Determine max width for number formatting
-        # Handle case where only 0 or None might exist if comparison fails early
-        non_placeholder_elements = matrix[comparison_results != 0] if comparison_results is not None else matrix
-        
-        # Check if non_placeholder_elements is empty or contains only zeros before calculating max/min
-        if non_placeholder_elements is not None and non_placeholder_elements.size > 0 and np.any(non_placeholder_elements):
-             max_val = np.max(np.abs(non_placeholder_elements))
-             min_val = np.min(non_placeholder_elements) # Check min on potentially signed values
-             max_width = max(len(str(max_val)), len(str(min_val)), 4) # Min width 4 for -999 or default
-        else: # Handle case with no mismatches or empty matrix
-             max_width = 4 # Default width
+        max_val = np.max(np.abs(matrix[comparison_results != 0])) if np.any(comparison_results != 0) else 0
+        min_val = np.min(matrix[comparison_results != 0]) if np.any(comparison_results != 0) else 0
+        # Handle case where only -999 exists
+        if np.all(matrix == -999):
+             max_width = 4
+        else:
+             max_width = max(len(str(max_val)), len(str(min_val)), 4) # Min width 4 for -999
         
         # Print header
         header = "Row |" + "".join([f"{str(j).center(max_width + 3)}" for j in range(cols)])
@@ -140,8 +107,7 @@ def print_comparison_matrix(matrix, comparison_results):
             row_str = f"{str(i).ljust(3)} |"
             for j in range(cols):
                 val = matrix[i, j]
-                # Handle case where comparison_results might be None if shapes mismatch
-                comp_res = comparison_results[i, j] if comparison_results is not None else 0
+                comp_res = comparison_results[i, j]
                 formatted_val = str(val).rjust(max_width)
                 
                 if comp_res == 1: # Match
@@ -161,7 +127,8 @@ def print_comparison_matrix(matrix, comparison_results):
 def main():
     parser = argparse.ArgumentParser(description="Load recovered S matrix, compare solved columns with true S matrix, and print with highlights.")
     parser.add_argument("npy_file", help="Path to the .npy file containing the recovered S matrix.")
-    parser.add_argument("-u", "--uid", type=str, required=True, help="User ID for loading the true secret key from student file.")
+    parser.add_argument("-u", "--uid", type=str, required=True, help="User ID for loading the true secret key.")
+    parser.add_argument("-c", "--column", type=int, default=None, help="Optional: Index of a single column to compare and highlight.")
     args = parser.parse_args()
 
     # --- Load Recovered S ---
@@ -178,88 +145,85 @@ def main():
         
     # --- Load True S ---
     kem = FrodoKEM(VARIANT) # Initialize KEM to get params
-    # --- Use student file loading and parsing ---
     sk_hex = load_student_data(args.uid)
     if sk_hex is None:
-        return # Error already logged
+        return
     S_true_np = parse_true_S(kem, sk_hex)
     if S_true_np is None:
-        return # Error already logged
+        return
         
-    # --- Print Parsed True S for Debug ---
-    log.info("--- Parsed True S Matrix (from Student File - First 5x8) ---")
-    try:
-        print(S_true_np[:5, :]) # Print first 5 rows, all columns
-    except Exception as e:
-        log.error(f"Error printing parsed S_true: {e}")
-    # ---------------------------------------
-        
-    # --- Immediate Comparison Debug --- 
-    log.info("--- Immediate Comparison --- ")
-    try:
-        val_rec = S_recovered_np[0, 0]
-        dtype_rec = S_recovered_np.dtype
-        val_true = S_true_np[0, 0]
-        dtype_true = S_true_np.dtype
-        log.info(f"Recovered[0,0]: {val_rec} (dtype: {dtype_rec})")
-        log.info(f"Parsed True[0,0]: {val_true} (dtype: {dtype_true})")
-        if val_rec == val_true and dtype_rec == dtype_true:
-             log.info("First element MATCHES.")
-        else:
-             log.error("First element MISMATCH.")
-             
-        if np.array_equal(S_recovered_np, S_true_np):
-            log.info("np.array_equal confirms: MATRICES ARE EQUAL")
-        else:
-            log.error("np.array_equal confirms: MATRICES ARE DIFFERENT")
-            # Find first difference
-            diff_indices = np.where(S_recovered_np != S_true_np)
-            if len(diff_indices[0]) > 0:
-                r, c = diff_indices[0][0], diff_indices[1][0]
-                log.error(f"First difference at index ({r},{c}): Rec={S_recovered_np[r,c]}, True={S_true_np[r,c]}")
-            
-    except Exception as e:
-        log.error(f"Error during immediate comparison: {e}")
-    # --- End Immediate Comparison --- 
-
     # --- Validate Shapes ---
     if S_recovered_np.shape != S_true_np.shape:
         log.error(f"Shape mismatch! Recovered: {S_recovered_np.shape}, True: {S_true_np.shape}")
         return
     rows, cols = S_recovered_np.shape
 
-    # --- Compare Matrices & Prepare Comparison Matrix ---
-    log.info("Comparing Recovered S with True S (from student file)... ")
+    # --- Compare Columns & Prepare Comparison Matrix ---
+    log.info("--- Comparing Recovered Columns with True Columns --- ")
+    # 0 = unsolved/placeholder, 1 = match, -1 = mismatch
     comparison_results = np.zeros_like(S_recovered_np, dtype=int)
+    all_match = True
+    solved_count = 0
+    columns_to_check = []
     
-    match_mask = (S_recovered_np == S_true_np)
-    mismatch_mask = ~match_mask
-    
-    comparison_results[match_mask] = 1  # 1 for match
-    comparison_results[mismatch_mask] = -1 # -1 for mismatch
-    
-    num_matches = np.sum(match_mask)
-    num_mismatches = np.sum(mismatch_mask)
-    total_elements = S_recovered_np.size
-    
-    log.info(f"Comparison complete: Matches={num_matches}, Mismatches={num_mismatches} (Total={total_elements})")
-    
-    # --- Print Mismatch Details --- 
-    if num_mismatches > 0:
-        log.warning("--- Mismatch Details (Index: Recovered vs True) ---")
-        mismatch_indices = np.where(mismatch_mask)
-        # Limit number of mismatches printed to avoid flooding logs
-        max_mismatches_to_print = 100 
-        for i in range(min(num_mismatches, max_mismatches_to_print)):
-            r, c = mismatch_indices[0][i], mismatch_indices[1][i]
-            log.warning(f"  ({r},{c}): {RED}{S_recovered_np[r, c]}{RESET} vs {GREEN}{S_true_np[r, c]}{RESET}")
-        if num_mismatches > max_mismatches_to_print:
-            log.warning(f"  ... (truncated - showing first {max_mismatches_to_print} mismatches) ...")
-    # ----------------------------- 
+    if args.column is not None:
+        # Single column mode
+        if 0 <= args.column < cols:
+            log.info(f"Targeting single column: {args.column}")
+            columns_to_check = [args.column]
+        else:
+            log.error(f"Invalid target column {args.column}. Must be between 0 and {cols-1}. Skipping comparison.")
+            # Leave comparison_results as zeros
+    else:
+        # All columns mode (default)
+        log.info("Comparing all columns.")
+        columns_to_check = range(cols)
+        
+    for j in columns_to_check:
+        recovered_col = S_recovered_np[:, j]
+        true_col = S_true_np[:, j]
+        # Check if column contains the placeholder
+        is_solved = not np.any(recovered_col == -999)
+        
+        if is_solved:
+            # Only count solved columns if checking all
+            if args.column is None: 
+                 solved_count += 1 
+                 
+            col_match = np.array_equal(recovered_col, true_col)
+            if col_match:
+                log.info(f"Column {j}: MATCH")
+                comparison_results[:, j] = 1 # Mark column as matching
+            else:
+                log.error(f"Column {j}: MISMATCH")
+                all_match = False
+                # Mark specific mismatching cells
+                comparison_results[:, j] = np.where(recovered_col == true_col, 1, -1)
+                # Optional: Log first few differing values
+                diff_indices = np.where(recovered_col != true_col)[0]
+                log.error(f"  First few differences at rows: {diff_indices[:5]}")
+                for row_idx in diff_indices[:5]:
+                     log.error(f"    Row {row_idx}: Rec={recovered_col[row_idx]}, True={true_col[row_idx]}")
+        else:
+            log.info(f"Column {j}: Contains placeholder value (-999), skipping comparison.")
+            # If we are checking all columns, finding an unsolved one means not all match
+            if args.column is None:
+                 all_match = False 
+                     
+    # Only print summary if checking all columns
+    if args.column is None:                 
+        log.info("--- Comparison Summary ---")
+        log.info(f"Compared {solved_count}/{cols} columns (excluding placeholders).")
+        if solved_count == 0:
+             log.warning("No solved columns found to compare.")
+        elif all_match:
+             log.info("Overall Result: SUCCESS - All solved columns match the true secret!")
+        else:
+             log.error("Overall Result: FAILURE - At least one solved column does NOT match the true secret (or some columns were not solved).")
 
     # --- Print Matrix with Highlights ---
-    log.info("Displaying comparison matrix (Green=Match, Red=Mismatch)")
-    print_comparison_matrix(S_recovered_np, comparison_results) # Use the full comparison
+    print("\nPrinting Recovered Matrix (Green=Match, Red=Mismatch, No Highlight=Unsolved):")
+    print_comparison_matrix(S_recovered_np, comparison_results)
 
 if __name__ == "__main__":
     main() 

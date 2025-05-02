@@ -274,7 +274,7 @@ def _recover_single_approximation(args: Tuple[Optional[LocalServer], str, str, i
             server=server, kem=kem, uid=uid,
             c1_bytes=c1_bytes, base_aes_ct_hex=base_aes_ct_hex,
             target_M_i=r, target_M_j=l,
-            search_range=(kem.q // (2**kem.B)) - 1, # New range: M-1 (8191)
+            search_range=(kem.q // (2**(kem.B+1))), # Corrected search range (4096)
             correct_salt_bytes=correct_salt_bytes # Pass salt down
         )
     except Exception as e:
