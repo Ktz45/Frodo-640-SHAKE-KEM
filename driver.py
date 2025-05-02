@@ -86,13 +86,13 @@ def permute_delta(server, uid, kem, matrix_set, c1, ss, deltaMax, delta_i, delta
 def find_key(aes_ct, ss):
     byte_array = bytearray(ss)
     for i in range(16):
-        for bitflip in range(255): # TODO: find a way to scale this down
+        for bitflip in range(1, 255): # TODO: find a way to scale this down
             byte_array[i] = byte_array[i] ^ bitflip
             test_ct = aes_cbc.encrypt_aes_128_cbc(byte_array.hex().upper())
             if(test_ct.hex().upper() == aes_ct):
                 return byte_array.hex().upper(), i, bitflip
             byte_array[i] = byte_array[i] ^ bitflip
-    return None, None
+    return None, None, None
 
 @lru_cache(maxsize=100_000)
 def _oracle_cached(ct_hex: str):
@@ -115,9 +115,13 @@ def oracle(server, uid, bprime, c2) -> bytes:
 _oracle_cached.cache = {}
 
 def _recover_coeff(args):
-    i, j, seedA, b, kem, uid, server = args
-    delta = permute_delta(server,uid, kem, seedA, b, Q, i, j)
-    return (i, j, delta)
+    server,uid, kem, matrix_set, c1, ss, Q, i, j = args
+    delta = permute_delta(server,uid, kem, matrix_set, c1, ss, Q, i, j)
+    ct, ss = encaps(kem, matrix_set, delta=(delta + 1), delta_i=i, delta_j=j)
+    aes_ct = server.call_second_interface(UID, ct.hex().upper())
+    key, bitflip, byte_num = find_key(aes_ct, ss)
+    KPrime = kem.encode(bytes.fromhex(key))
+    return (i, j, delta, KPrime)
 
 
 def recover_secret_parallel(server, uid, seedA, b, rows=None, cols=None, workers=None):
@@ -128,12 +132,15 @@ def recover_secret_parallel(server, uid, seedA, b, rows=None, cols=None, workers
 
     # blank_bprime = [[0]*kem.n for _ in range(kem.nbar)]
     # base_cipher = oracle(server, uid, blank_bprime, [[0]*kem.nbar for _ in range(kem.nbar)])
+    matrix_set = MatrixSet(640, 8, seedA=seedA, b=b)
+    ct, ss = encaps(kem, matrix_set)
+    c1 = ct[0:(int(kem.mbar * kem.n * kem.D / 8))]
 
     start = time.time()
     tasks = []
-    for i in range(rows):
-        for j in range(cols):
-            tasks.append((i, j, seedA, b, kem, uid, server))
+    for i in range(8):
+        for j in range(8):
+            tasks.append((server,uid, kem, matrix_set, c1, ss, Q, i, j))
 
     done = 0
     total = len(tasks)
@@ -141,10 +148,10 @@ def recover_secret_parallel(server, uid, seedA, b, rows=None, cols=None, workers
         workers = max(2, multiprocessing.cpu_count())
     S = [[0]*cols for _ in range(rows)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-        for i, j, val in ex.map(_recover_coeff, tasks):
-            S[i][j] = val
+        for i, j, delta, KPrime in ex.map(_recover_coeff, tasks):
+            S[i][j] = delta
             done += 1
-            if done % 100 == 0 or done == total:
+            if done % 8 == 0 or done == total:
                 pct = 100*done/total
                 print(f"Progress: {done}/{total} ({pct:.1f}%)")
 
@@ -304,39 +311,6 @@ if __name__ == "__main__":
     server.check_server()
 
     pk, seedA, b = server.call_first_interface(UID)
-    kem = FrodoKEM(VARIANT)
-    matrix_set = MatrixSet(640, 8, seedA=seedA, b=b)
-    # ct, ss =  kem_instance.kem_encaps(bytes.fromhex(pk)) # Create honest ciphertext?
-    ct, ss = encaps(kem, matrix_set)
-    aes_ct = server.call_second_interface(UID, ct.hex().upper())
-    c1 = ct[0:(int(kem.mbar * kem.n * kem.D / 8))]
-    c1 = matrix_gen_c1(kem, matrix_set.R, matrix_set.A, matrix_set.E1)
-    delta = permute_delta(server, UID, kem, matrix_set, c1, ss, Q, 6, 7) # TODO: Check bounding of Q
-    print(f"Found delta:{delta}")
-    ct, ss = encaps(kem, matrix_set, delta=(delta + 1), delta_i=6, delta_j=7)
-    d_failed = False
-    try:
-        aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex()
-    except ValueError:
-        d_failed = True
-    assert not d_failed
-    ct, ss = encaps(kem, matrix_set, delta=(delta + 1), delta_i=6, delta_j=7)
-    aes_ct = server.call_second_interface(UID, ct.hex().upper())
-    dp1_failed = False
-    try:
-        aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex()
-    except ValueError:
-        dp1_failed = True
-    assert dp1_failed
-    key, bitflip, byte_num = find_key(aes_ct, ss)
-
-    print(aes_cbc.decrypt_aes_128_cbc(key, bytes.fromhex(aes_ct)).hex())
-    print(f"Found correct key")
-    print(bitflip)
-    KPrime = kem.encode(bytes.fromhex(key))
-    print(matrix_sub(matrix_set.K, KPrime))
-    print(KPrime)
-    exit()
 
 
 
