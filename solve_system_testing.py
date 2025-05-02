@@ -253,7 +253,17 @@ def solve_column_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, int
         # Check first few vectors for the expected solution form.
         log.info(f"{worker_log_prefix} Analyzing first few vectors of reduced basis...")
         solution_s_unknown = None
-        num_vectors_to_check = 5 # Reduced check range
+        
+        # Determine number of vectors to check based on block size
+        if bkz_block_size <= 20:
+            num_vectors_to_check = 5
+        elif bkz_block_size <= 40:
+            num_vectors_to_check = 10
+        elif bkz_block_size <= 60:
+            num_vectors_to_check = 15
+        else: # bkz_block_size > 60
+            num_vectors_to_check = 20
+        log.info(f"{worker_log_prefix} Checking first {num_vectors_to_check} basis vectors (Block size: {bkz_block_size}).")
 
         for i in range(min(num_vectors_to_check, n + 1)): 
             log.debug(f"{worker_log_prefix} Checking basis vector {i}")
@@ -319,6 +329,7 @@ def main():
     parser.add_argument("--bkz-float-type", choices=['d', 'dd', 'qd', 'mp'], default='mp', help="Floating point precision for BKZ (d=double, dd=double-double, qd=quad-double, mp=MPFR). 'mp' recommended.")
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO", help="Set logging level.")
     parser.add_argument("--target-col", type=int, default=None, help="Solve only for a specific column index j.")
+    parser.add_argument("--retry-bkz-increment", type=int, default=20, help="Increase BKZ block size by this amount for failed columns and retry (0 to disable).")
     args = parser.parse_args()
 
     log.setLevel(getattr(logging, args.log_level.upper()))
@@ -426,10 +437,58 @@ def main():
         log.error(f"Error occurred in ProcessPoolExecutor: {pool_exc}")
 
     total_solve_time = time.time() - start_solve_time
-    log.info(f"Parallel solving finished in {total_solve_time:.2f}s.")
+    log.info(f"Initial parallel solving finished in {total_solve_time:.2f}s.")
+
+    # --- Looping Retry for Failed Columns ---
+    failed_columns = [j for j in columns_to_process if results_map.get(j) is None]
+    current_retry_block_size = args.bkz_block_size # Start from initial size
+    
+    while failed_columns and args.retry_bkz_increment > 0:
+        current_retry_block_size += args.retry_bkz_increment
+        
+        log.info(f"--- Retrying {len(failed_columns)} failed columns ({failed_columns}) with BKZ block size {current_retry_block_size} ---")
+        
+        retry_tasks = []
+        for j in failed_columns:
+            retry_tasks.append((j, A_np, B_np, S_known_matrix, q, n, nbar, modulus_approx, current_retry_block_size, args.bkz_float_type))
+        
+        # Limit workers for retry based on available cores and number of tasks
+        num_retry_workers = min(args.workers if args.workers is not None else multiprocessing.cpu_count(), len(retry_tasks)) 
+        start_retry_time = time.time()
+        
+        try:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=num_retry_workers) as executor:
+                future_to_col_retry = {executor.submit(solve_column_worker, task): task[0] for task in retry_tasks}
+                for future in concurrent.futures.as_completed(future_to_col_retry):
+                    col_j = future_to_col_retry[future]
+                    try:
+                        _, s_j_unknown_retry = future.result() # Get result from retry worker
+                        if s_j_unknown_retry is not None:
+                            log.info(f"Successfully processed column {col_j} on RETRY (BKZ {current_retry_block_size}).")
+                            results_map[col_j] = s_j_unknown_retry # Update the map ONLY IF successful
+                        else:
+                            # Keep logging the failure, but don't update map (leave as None)
+                            log.error(f"Failed to find solution for column {col_j} on RETRY (BKZ {current_retry_block_size}).")
+                    except Exception as exc:
+                        log.error(f'Column {col_j} (RETRY BKZ {current_retry_block_size}) generated an exception during future.result(): {exc}')
+                        # Ensure it remains None on exception
+                        results_map[col_j] = None 
+        except Exception as pool_exc:
+            log.error(f"Error occurred in RETRY (BKZ {current_retry_block_size}) ProcessPoolExecutor: {pool_exc}")
+        
+        total_retry_time = time.time() - start_retry_time
+        log.info(f"Retry phase (BKZ {current_retry_block_size}) finished in {total_retry_time:.2f}s.")
+
+        # Update the list of failed columns for the next iteration
+        failed_columns = [j for j in failed_columns if results_map.get(j) is None]
+        
+    if failed_columns:
+         log.error(f"Columns {failed_columns} failed to solve even after retrying up to block size {current_retry_block_size}.")
+    elif args.retry_bkz_increment > 0:
+         log.info("All columns successfully processed (potentially after retries).")
 
     # --- Reconstruct Final S Matrix ---
-    log.info("Reconstructing final S matrix...")
+    log.info("Reconstructing final S matrix (using results from initial run and retries)...")
     all_solved = True
     reconstruction_successful_cols = []
 

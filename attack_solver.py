@@ -317,7 +317,7 @@ def recover_S_approximations(
     log.info(f"Targeting entries up to k={target_k-1}, l={target_l-1}")
     for k in range(target_k):
         for l in range(target_l):
-                tasks.append((server, VARIANT, uid, k, l, correct_salt_bytes))
+             tasks.append((server, VARIANT, uid, k, l, correct_salt_bytes))
              
     total_entries = len(tasks)
     if total_entries == 0:
@@ -484,7 +484,7 @@ def solve_system_from_approximations(
     log.info(f"  B_matrix dimensions: {len(B_matrix)}x{len(B_matrix[0]) if B_matrix else 'N/A'}")
     log.info(f"  Number of approximations received: {len(approximations)}")
 
-    # --- Create Solver Input Directory --- 
+    # --- Create Solver Input Directory ---
     solver_dir = "solver_inputs"
     try:
         os.makedirs(solver_dir, exist_ok=True)
