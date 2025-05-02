@@ -46,20 +46,21 @@ log = logging.getLogger("Solver")
 def delta_thresh_to_S_known(delta_thresh: int, modulus: int) -> int:
     """
     Converts the observed delta_threshold to S[k][l] mod modulus_approx.
-    Corrected logic: s_kl = -delta_thresh mod modulus, then centered in [-M/2, M/2).
+    Hypothesis: s_kl = (delta_thresh - modulus/2) mod modulus, then centered.
+    (This version passed the S_known vs S_true comparison check)
     """
     if delta_thresh is None:
       log.warning("Encountered None for delta_thresh, returning 0")
       return 0
-    
-    s_kl_known_mod = (-delta_thresh + modulus) % modulus # Ensure positive result
+      
+    modulus_half = modulus // 2
+    s_kl_known_mod = (delta_thresh - modulus_half + modulus) % modulus # Ensure positive result
     
     # Center the result in [-M/2, M/2)
-    modulus_half = modulus // 2
     if s_kl_known_mod >= modulus_half:
         s_kl_known_mod -= modulus
         
-    log.debug(f"Converting delta={delta_thresh} to centered S_known={s_kl_known_mod} (mod {modulus}) using -delta")
+    log.debug(f"Converting delta={delta_thresh} to centered S_known={s_kl_known_mod} (mod {modulus}) using (delta - M/2)")
     return s_kl_known_mod
 
 # --- Data Loading ---
