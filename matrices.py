@@ -58,9 +58,9 @@ class MatrixSet():
         else:
             self.A = None
             self.B = None
-        self.R = [[(1 if i == j else 0) for j in range(n)] for i in range(nbar)]
-        self.E1 = [[(1 if i ==j else 0) for j in range(n)] for i in range(nbar)]
-        self.E2 = [[2 for j in range(nbar)] for i in range(nbar)]
+        self.R = [[(1 if i == j else 1) for j in range(n)] for i in range(nbar)]
+        self.E1 = [[(1 if i ==j else 1) for j in range(n)] for i in range(nbar)]
+        self.E2 = [[0 for j in range(nbar)] for i in range(nbar)]
         self.K = [[Q//4 for j in range(nbar)] for i in range(nbar)] # q/4 * (8x8 matrix of 1s)
 
 

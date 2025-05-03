@@ -64,7 +64,7 @@ class LocalServer():
         with open(filename, 'a') as file:
             file.write(f"Shared Secret Decapsulated: {ss_d.hex().upper()}\n")
             file.write(f"Modified Cipher Text: {modified_cipher_text.hex().upper()}\n")
-        # print("AES Ciphertext Returned")
+        # print("AES Ciphertext Returned") # Suppressed as requested
         return modified_cipher_text.hex().upper()
 
     def call_third_interface(self, uid, secret_key):

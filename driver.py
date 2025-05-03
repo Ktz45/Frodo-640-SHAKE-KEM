@@ -120,7 +120,13 @@ def _recover_coeff(args):
         raise ValueError(f"Failed to find key for ({i},{j})")
     KPrime = kem.encode(bytes.fromhex(key))
     # TODO: find equation based on delta and KPrime
-    return (i, j, delta, KPrime)
+    K = kem.encode(ss)
+    D = matrix_sub(K, KPrime)
+    for i1 in range(8):
+        for j1 in range(8):
+            if(D[i1][j1] != 0):
+                assert i1 == i and j1 == j
+    return (i, j, delta)
 
 
 def recover_secret_parallel(server, variant, uid, seedA, b, rows=None, cols=None, workers=None):
@@ -144,13 +150,17 @@ def recover_secret_parallel(server, variant, uid, seedA, b, rows=None, cols=None
     if workers is None:
         workers = max(2, multiprocessing.cpu_count())
     S = [[0]*cols for _ in range(rows)]
+    M = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-        for i, j, delta, KPrime in ex.map(_recover_coeff, tasks):
+        for i, j, delta in ex.map(_recover_coeff, tasks):
             S[i][j] = delta
+            M.append([(matrix_set.R[i][curr] if curr < rows else (matrix_set.E1[i][curr - rows] if curr < 2*rows else Q//8 - delta)) for curr in range(2*rows + 1)])
             done += 1
             if done % 8 == 0 or done == total:
                 pct = 100*done/total
                 print(f"Progress: {done}/{total} ({pct:.1f}%)")
+    print(len(M), len(M[0]))
+    print(M)
 
     duration = time.time() - start
     print(f"Parallel recovery finished in {duration:.2f}s for {rows*cols} coeffs using {workers} threads")
