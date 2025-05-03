@@ -129,7 +129,7 @@ def recover_secret_parallel(server, variant, uid, seedA, b, rows=None, cols=None
     cols = cols or kem.nbar
     print(f"[recover] target matrix size: {rows}x{cols}")
 
-    matrix_set = MatrixSet(rows, cols, seedA=seedA, b=b)
+    matrix_set = MatrixSet(rows, cols, variant, seedA=seedA, b=b)
     ct, ss = encaps(kem, matrix_set)
     c1 = ct[0:(int(kem.mbar * kem.n * kem.D / 8))]
 
