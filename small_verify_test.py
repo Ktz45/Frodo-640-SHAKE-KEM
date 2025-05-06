@@ -10,10 +10,10 @@ import os, sys
 from frodokem import FrodoKEM
 from local_server import LocalServer
 
-UID = "119008041"
+# UID = "119008041"
+UID = "116606028"
 
 print("Starting small verify test...")
-
 # --------------------------------------------------------------------
 # 1. Load recovered S matrix (produced by solve_system_testing earlier)
 # --------------------------------------------------------------------

@@ -17,7 +17,7 @@ import bitstring
 
 # Assuming these modules are in the same directory or accessible via PYTHONPATH
 from frodokem import FrodoKEM
-from local_server import LocalServer
+# from local_server import RemoteServer
 import aes_cbc
 from matrices import matrix_add, matrix_mul, matrix_sub
 import solve_system_testing # Assuming matrix ops are needed later
@@ -25,7 +25,7 @@ import solve_system_testing # Assuming matrix ops are needed later
 # ==== Copied from driver.py ====
 from frodokem import FrodoKEM
 from remote_server import RemoteServer
-from local_server import LocalServer
+# from local_server import RemoteServer
 from matrices import MatrixSet, matrix_add, matrix_mul, matrix_sub
 from enum import Enum
 import aes_cbc
@@ -46,7 +46,9 @@ import bitstring  # to assemble reconstructed secret key
 
 # --- Configuration Constants ---
 VARIANT = "FrodoKEM-640-SHAKE"
-UID = '119008041' # User ID for the server. Was DEFAULT_UID
+# UID = '119008041' # User ID for the server. Was DEFAULT_UID
+UID = '116606028' # User ID for the server. Was DEFAULT_UID
+
 DETERM = False # Use deterministic keys (requires existing student file). Was --determ flag.
 LOG_LEVEL = "INFO" # Logging level. Was --log-level argument.
 MAX_K = None # Maximum row index (k) of S to recover. Was --max-k argument.
@@ -83,10 +85,11 @@ Matrix = List[List[int]]
 
 # --- Helper Functions ---
 
-def setup_server_and_kem(uid: str, determ: bool) -> Tuple[LocalServer, FrodoKEM, str, bytes, Matrix]:
-    """Initializes LocalServer, FrodoKEM instance, and gets public key."""
+def setup_server_and_kem(uid: str, determ: bool) -> Tuple[RemoteServer, FrodoKEM, str, bytes, Matrix]:
+    """Initializes RemoteServer, FrodoKEM instance, and gets public key."""
     log.info(f"Setting up server for UID: {uid}, Deterministic: {determ}")
-    server = LocalServer(VARIANT, determ=determ)
+    # server = RemoteServer(VARIANT, determ=determ)
+    server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
     kem = FrodoKEM(VARIANT)
     assert kem.n > 0 and kem.nbar > 0 and kem.mbar > 0 and kem.D > 0 and kem.B > 0, "KEM parameters not properly initialized"
 
@@ -127,7 +130,7 @@ def setup_server_and_kem(uid: str, determ: bool) -> Tuple[LocalServer, FrodoKEM,
 oracle_cache: dict[str, str] = {}
 
 def query_oracle(
-    server: LocalServer, 
+    server: RemoteServer, 
     kem: FrodoKEM, 
     uid: str, 
     c1_bytes: bytes, 
@@ -174,7 +177,7 @@ def query_oracle(
 # --- Attack Logic ---
 
 def find_rounding_threshold(
-    server: LocalServer,
+    server: RemoteServer,
     kem: FrodoKEM,
     uid: str,
     c1_bytes: bytes,
@@ -188,7 +191,7 @@ def find_rounding_threshold(
     that causes the oracle's AES output to change from base_aes_ct_hex.
 
     Args:
-        server: The LocalServer instance.
+        server: The RemoteServer instance.
         kem: The FrodoKEM instance.
         uid: User ID.
         c1_bytes: Packed B' matrix bytes.
@@ -256,13 +259,14 @@ def find_rounding_threshold(
 
 def _recover_single_approximation(args: Tuple[str, str, int, int]) -> Tuple[int, int, Optional[int]]:
     """Worker function executed in a separate process.
-       It creates its own LocalServer and FrodoKEM instances to avoid pickling
+       It creates its own RemoteServer and FrodoKEM instances to avoid pickling
        issues with lambdas inside those objects.
     """
     variant, uid, k, l = args
 
-    # Instantiate a fresh LocalServer (reads existing student file)  
-    server = LocalServer(variant, determ=False)
+    # Instantiate a fresh RemoteServer (reads existing student file)  
+    # server = RemoteServer(variant, determ=False)
+    server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
 
     # Initialize KEM instance within the worker
     try:
@@ -337,7 +341,7 @@ def _recover_single_approximation(args: Tuple[str, str, int, int]) -> Tuple[int,
     return (k, l, delta_thresh)
 
 def recover_S_approximations(
-    server: LocalServer,
+    server: RemoteServer,
     kem: FrodoKEM,
     uid: str,
     max_k: Optional[int] = None,
@@ -374,7 +378,7 @@ def recover_S_approximations(
     start_time_total = time.monotonic()
 
     # --- Execute in parallel --- 
-    # Use threads to avoid pickling LocalServer (which contains an unpicklable lambda).
+    # Use threads to avoid pickling RemoteServer (which contains an unpicklable lambda).
     # The cryptographic heavy-lifting is Python-level anyway, so GIL contention is minor
     # compared to the I/O bound oracle queries.
     try:
@@ -508,7 +512,7 @@ def solve_system_from_approximations(
 
 
 def verify_solution(
-    server: LocalServer,
+    server: RemoteServer,
     kem: FrodoKEM,
     uid: str,
     pk_hex: str,
@@ -584,9 +588,9 @@ def sanity_check_small_test_verfify():
     import numpy as np
     import os, sys
     from frodokem import FrodoKEM
-    from local_server import LocalServer
+    from remote_server import RemoteServer
 
-    UID = "119008041"
+    UID = "116606028"
 
     print("Starting small verify test...")
 
@@ -632,7 +636,8 @@ def sanity_check_small_test_verfify():
     # --------------------------------------------------------------------
     # 4. Call third interface and print server response
     # --------------------------------------------------------------------
-    server = LocalServer(variant, determ=False)
+    # server = RemoteServer(variant, determ=False)
+    server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
     server.call_third_interface(UID, secret_guess_hex)
 
 # --- Main Execution ---
@@ -653,13 +658,13 @@ def main():
     if args.mode == "remote" and args.size == "full":
         print("Remote Server")
         server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
-    elif args.mode == "local" and args.size == "small":
-        print("Local Server, small")
-        variant = "Small-FrodoKEM"
-        server = LocalServer(variant, determ=args.determ)
-    elif args.mode == "local":
-        print("Local Server, full")
-        server = LocalServer(variant, determ=args.determ)
+    # elif args.mode == "local" and args.size == "small":
+    #     print("Local Server, small")
+    #     variant = "Small-FrodoKEM"
+    #     server = RemoteServer(variant, determ=args.determ)
+    # elif args.mode == "local":
+    #     print("Local Server, full")
+    #     server = RemoteServer(variant, determ=args.determ)
     else:
         raise ValueError("Remote Server cannot use small size")
     
