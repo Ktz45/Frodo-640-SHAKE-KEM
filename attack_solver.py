@@ -22,6 +22,28 @@ import aes_cbc
 from matrices import matrix_add, matrix_mul, matrix_sub
 import solve_system_testing # Assuming matrix ops are needed later
 
+# ==== Copied from driver.py ====
+from frodokem import FrodoKEM
+from remote_server import RemoteServer
+from local_server import LocalServer
+from matrices import MatrixSet, matrix_add, matrix_mul, matrix_sub
+from enum import Enum
+import aes_cbc
+import secrets
+import os
+from itertools import product
+
+import requests
+import time
+import concurrent.futures
+import multiprocessing
+from functools import lru_cache
+import struct
+import argparse
+import hashlib  # for computing pkh (True Secret) from public key
+import bitstring  # to assemble reconstructed secret key
+# ===============================
+
 # --- Configuration Constants ---
 VARIANT = "FrodoKEM-640-SHAKE"
 UID = '119008041' # User ID for the server. Was DEFAULT_UID
@@ -33,8 +55,20 @@ WORKERS = None # Number of parallel workers for approximation gathering. Was --w
 
 # --- Internal Constants ---
 SALT_HEX = "0" * 64 # Correct length: 64 hex chars = 32 bytes
-BYTES_SALT = bytes.fromhex(SALT_HEX)
+# BYTES_SALT = bytes.fromhex(SALT_HEX)
 FIXED_AES_PLAINTEXT = b"\x01" * 16
+
+
+BASE_URL: str = "http://sp25cmsc656.cs.umd.edu:5001/"
+TEST_URL = f'{BASE_URL}/check'
+first_interface = f"{BASE_URL}/1st-interface"
+second_interface = f"{BASE_URL}/2nd-interface"
+third_interface = f"{BASE_URL}/3rd-interface"
+Q = 32768
+salt = ""
+for _ in range(64):
+    salt += "A"
+BYTES_SALT = bytes.fromhex(salt)
 
 
 # --- Logging Setup ---
@@ -540,11 +574,95 @@ def verify_solution(
         log.error(f"FAILURE: Exception occurred during call_third_interface: {e}")
         return False
 
+def sanity_check_small_test_verfify():
+    """Quick offline verification script.
+    Loads the previously recovered S matrix for UID 119008041, builds the
+    secret-key guess (S^T || pkh) and asks the local server's third interface to
+    confirm it – no oracle queries or recomputation required.
+    """
+
+    import numpy as np
+    import os, sys
+    from frodokem import FrodoKEM
+    from local_server import LocalServer
+
+    UID = "119008041"
+
+    print("Starting small verify test...")
+
+    # --------------------------------------------------------------------
+    # 1. Load recovered S matrix (produced by solve_system_testing earlier)
+    # --------------------------------------------------------------------
+    npy_path = f"recovered_S_{UID}.npy"
+    if not os.path.exists(npy_path):
+        sys.exit(f"Recovered matrix {npy_path} not found – run the solver first.")
+
+    S = np.load(npy_path)  # shape (640,8)
+
+    # --------------------------------------------------------------------
+    # 2. Read student file to obtain PK and variant (do NOT regenerate keys)
+    # --------------------------------------------------------------------
+    student_file = os.path.join("student_files", f"{UID}.txt")
+    if not os.path.exists(student_file):
+        sys.exit("student_file missing – run attack_solver once to create it.")
+
+    with open(student_file, "r") as f:
+        txt = f.read()
+
+    variant = txt.split("Variant: ")[1].split("\n")[0]
+    pk_hex  = txt.split("Public Key: ")[1].split("\n")[0]
+
+    # --------------------------------------------------------------------
+    # 3. Compute pkh and encode S^T
+    # --------------------------------------------------------------------
+    kem = FrodoKEM(variant)
+
+    pkh = kem.shake(bytes.fromhex(pk_hex), kem.len_pkh_bytes)
+
+    S_T = S.T.astype(np.int16)
+    st_bytes = bytearray()
+    for i in range(kem.nbar):
+        for j in range(kem.n):
+            value = int(S_T[i, j]) % (1 << 16)
+            st_bytes += value.to_bytes(2, byteorder="little", signed=False)
+
+    secret_guess_hex = st_bytes.hex().upper() + pkh.hex().upper()
+    assert len(st_bytes) == kem.n * kem.nbar * 2, "Encoded S^T length mismatch"
+
+    # --------------------------------------------------------------------
+    # 4. Call third interface and print server response
+    # --------------------------------------------------------------------
+    server = LocalServer(variant, determ=False)
+    server.call_third_interface(UID, secret_guess_hex)
 
 # --- Main Execution ---
 
 def main():
     # Arguments are now constants defined above
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--size", choices=["small","full"], default="full",
+                        help="small=32x4, full=640x8")
+    parser.add_argument("--mode", choices=["local","remote"], default="local",
+                        help="local, remote")
+    parser.add_argument("--fresh", action="store_true", help="delete existing checkpoints and student file for UID before run")
+    parser.add_argument("--determ", action="store_true", help="run based on the last student file saved")
+    args = parser.parse_args()
+
+    server = None
+    variant = "FrodoKEM-640-SHAKE"
+    if args.mode == "remote" and args.size == "full":
+        print("Remote Server")
+        server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
+    elif args.mode == "local" and args.size == "small":
+        print("Local Server, small")
+        variant = "Small-FrodoKEM"
+        server = LocalServer(variant, determ=args.determ)
+    elif args.mode == "local":
+        print("Local Server, full")
+        server = LocalServer(variant, determ=args.determ)
+    else:
+        raise ValueError("Remote Server cannot use small size")
+    
 
     log.setLevel(log_level_numeric) # Use the numeric level set earlier
 
@@ -583,6 +701,11 @@ def main():
              verify_solution(server, kem, UID, pk_hex, S_recovered)
         else:
              log.warning("Skipping verification due to recovery limits (MAX_K/MAX_L constants were set).")
+
+        
+        # --- Sanity Check to call the small verify test ---
+        sanity_check_small_test_verfify()
+
 
     except FileNotFoundError as e:
         log.error(f"File not found: {e}. If using DETERM=True, ensure student file exists.")
