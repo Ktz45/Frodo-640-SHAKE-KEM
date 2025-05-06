@@ -1,30 +1,60 @@
-import pickle, solve_system_testing, attack_solver, os
-from local_server import LocalServer
+"""Quick offline verification script.
+
+Loads the previously recovered S matrix for UID 119008041, builds the
+secret-key guess (S^T || pkh) and asks the local server's third interface to
+confirm it – no oracle queries or recomputation required.
+"""
+
+import numpy as np
+import os, sys
 from frodokem import FrodoKEM
+from local_server import LocalServer
 
-UID = "119008041"                 # <-- your uid
-PICKLE = f"solver_inputs/solver_inputs_{UID}.pkl"
+UID = "119008041"
 
-# ------------------------------------------------------------------
-#  A)  load the previously stored data (seedA, B, Δ-thresholds …)
-# ------------------------------------------------------------------
-solver_data = pickle.load(open(PICKLE, "rb"))
+print("Starting small verify test...")
 
-# ------------------------------------------------------------------
-#  B)  call the lattice solver; this takes ~15 s, not 10 minutes
-# ------------------------------------------------------------------
-S = solve_system_testing.main(
-        cmdline=False,
-        uid=UID,
-        workers=8,           # whatever you like
-        bkz_block_size=80,   # or 60/90/100 …
-        log_level="INFO")
+# --------------------------------------------------------------------
+# 1. Load recovered S matrix (produced by solve_system_testing earlier)
+# --------------------------------------------------------------------
+npy_path = f"recovered_S_{UID}.npy"
+if not os.path.exists(npy_path):
+    sys.exit(f"Recovered matrix {npy_path} not found – run the solver first.")
 
-# ------------------------------------------------------------------
-#  C)  verify against the server's third interface
-#      (needs the new verify_solution we just fixed)
-# ------------------------------------------------------------------
-server = LocalServer("FrodoKEM-640-SHAKE", determ=False)        # determ=True if you want fixed keys
-kem    = FrodoKEM("FrodoKEM-640-SHAKE")
-pk_hex, _, _ = server.call_first_interface(UID)   # gets a fresh pk and stores it in student_files/UID.txt
-attack_solver.verify_solution(server, kem, UID, pk_hex, S)
+S = np.load(npy_path)  # shape (640,8)
+
+# --------------------------------------------------------------------
+# 2. Read student file to obtain PK and variant (do NOT regenerate keys)
+# --------------------------------------------------------------------
+student_file = os.path.join("student_files", f"{UID}.txt")
+if not os.path.exists(student_file):
+    sys.exit("student_file missing – run attack_solver once to create it.")
+
+with open(student_file, "r") as f:
+    txt = f.read()
+
+variant = txt.split("Variant: ")[1].split("\n")[0]
+pk_hex  = txt.split("Public Key: ")[1].split("\n")[0]
+
+# --------------------------------------------------------------------
+# 3. Compute pkh and encode S^T
+# --------------------------------------------------------------------
+kem = FrodoKEM(variant)
+
+pkh = kem.shake(bytes.fromhex(pk_hex), kem.len_pkh_bytes)
+
+S_T = S.T.astype(np.int16)
+st_bytes = bytearray()
+for i in range(kem.nbar):
+    for j in range(kem.n):
+        value = int(S_T[i, j]) % (1 << 16)
+        st_bytes += value.to_bytes(2, byteorder="little", signed=False)
+
+secret_guess_hex = st_bytes.hex().upper() + pkh.hex().upper()
+assert len(st_bytes) == kem.n * kem.nbar * 2, "Encoded S^T length mismatch"
+
+# --------------------------------------------------------------------
+# 4. Call third interface and print server response
+# --------------------------------------------------------------------
+server = LocalServer(variant, determ=False)
+server.call_third_interface(UID, secret_guess_hex)

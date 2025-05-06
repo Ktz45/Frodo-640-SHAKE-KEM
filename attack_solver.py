@@ -525,11 +525,14 @@ def verify_solution(
         log.debug(f"Captured output from third interface: {output.strip()}") # Log captured output for debug
         
         # Check if the specific success message is in the output
+        GREEN = "\033[92m"
+        RED = "\033[91m"
+        RESET = "\033[0m"
         if success_message in output:
-            log.info(f"SUCCESS: Found success message in third interface output.")
+            log.info(f"{GREEN}SUCCESS: Found success message in third interface output.{RESET}")
             return True
         else:
-            log.error(f"FAILURE: Success message not found in third interface output. Output was: {output.strip()}")
+            log.error(f"{RED}FAILURE: Success message not found in third interface output. Output was: {output.strip()}{RESET}")
             return False
             
     except Exception as e:
