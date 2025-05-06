@@ -61,7 +61,7 @@ class MatrixSet():
         self.R = [[(1 if i == j * round else 1) for j in range(n)] for i in range(nbar)]
         self.E1 = [[(1 if i ==j * round else 1) for j in range(n)] for i in range(nbar)]
         self.E2 = [[0 for j in range(nbar)] for i in range(nbar)]
-        self.K = [[Q//4 for j in range(nbar)] for i in range(nbar)] # q/4 * (8x8 matrix of 1s)
+        self.K = [[0 for j in range(nbar)] for i in range(nbar)] # q/4 * (8x8 matrix of 1s)
 
 
 
