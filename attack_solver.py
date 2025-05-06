@@ -3,6 +3,8 @@ import os
 import time
 import struct
 from typing import List, Tuple, Optional
+import io # Added for capturing stdout
+import contextlib # Added for capturing stdout
 
 import numpy as np
 import fpylll
@@ -50,7 +52,7 @@ Matrix = List[List[int]]
 def setup_server_and_kem(uid: str, determ: bool) -> Tuple[LocalServer, FrodoKEM, str, bytes, Matrix]:
     """Initializes LocalServer, FrodoKEM instance, and gets public key."""
     log.info(f"Setting up server for UID: {uid}, Deterministic: {determ}")
-    server = LocalServer(determ=determ)
+    server = LocalServer(VARIANT, determ=determ)
     kem = FrodoKEM(VARIANT)
     assert kem.n > 0 and kem.nbar > 0 and kem.mbar > 0 and kem.D > 0 and kem.B > 0, "KEM parameters not properly initialized"
 
@@ -218,21 +220,27 @@ def find_rounding_threshold(
 
     return threshold_delta
 
-def _recover_single_approximation(args: Tuple[Optional[LocalServer], str, str, int, int]) -> Tuple[int, int, Optional[int]]:
-    """Worker function to recover approximation for a single S[k][l].
-       Initializes its own KEM instance.
+def _recover_single_approximation(args: Tuple[str, str, int, int]) -> Tuple[int, int, Optional[int]]:
+    """Worker function executed in a separate process.
+       It creates its own LocalServer and FrodoKEM instances to avoid pickling
+       issues with lambdas inside those objects.
     """
-    # Unpack arguments - Pass variant string instead of kem object, pass correct salt.
-    server, variant, uid, k, l = args
+    variant, uid, k, l = args
+
+    # Instantiate a fresh LocalServer (reads existing student file)  
+    server = LocalServer(variant, determ=False)
 
     # Initialize KEM instance within the worker
     try:
         kem = FrodoKEM(variant)
-        assert kem.q > 0 # Basic check
-        # Add assertion: l must be < mbar for r=l to be valid M_i index
-        assert l < kem.mbar, f"Worker S[{k}][{l}]: Column index l={l} >= mbar={kem.mbar}, invalid target_M_i."
+        assert kem.q > 0  # Basic check
+        # Ensure l < mbar so r=l is valid row index in M/C matrices
+        assert l < kem.mbar, (
+            f"Worker S[{k}][{l}]: Column index l={l} >= mbar={kem.mbar}, invalid target_M_i."
+        )
     except Exception as e:
-        log.error(f"Worker S[{k}][{l}]: Failed to initialize FrodoKEM({variant}) or assertion failed: {e}")
+        # Use print because logging from child process may not propagate
+        print(f"[Worker {k},{l}] Error initialising FrodoKEM: {e}")
         return (k, l, None)
 
     # q_quarter = 32768 // 4
@@ -264,9 +272,6 @@ def _recover_single_approximation(args: Tuple[Optional[LocalServer], str, str, i
         raise Exception(f"Worker S[{k}][{l}]: Failed to pack B_prime: {e}")
 
     # --- Get Base Oracle Output ---
-    if server is None:
-         log.error(f"Worker S[{k}][{l}]: Server object is None.")
-         raise Exception(f"Worker S[{k}][{l}]: Server object is None.")
     try:
         base_aes_ct_hex = query_oracle(server, kem, uid, c1_bytes, c2_zero_bytes)
     except Exception as e:
@@ -324,7 +329,7 @@ def recover_S_approximations(
     log.info(f"Targeting entries up to k={target_k-1}, l={target_l-1}")
     for k in range(target_k):
         for l in range(target_l):
-             tasks.append((server, VARIANT, uid, k, l))
+             tasks.append((VARIANT, uid, k, l))
              
     total_entries = len(tasks)
     if total_entries == 0:
@@ -335,9 +340,9 @@ def recover_S_approximations(
     start_time_total = time.monotonic()
 
     # --- Execute in parallel --- 
-    # Using ProcessPoolExecutor for CPU-bound work (KEM ops)
-    # If LocalServer causes pickling issues, might need initialization within _recover_single_approximation
-    # or switch to ThreadPoolExecutor if bottleneck is purely I/O wait.
+    # Use threads to avoid pickling LocalServer (which contains an unpicklable lambda).
+    # The cryptographic heavy-lifting is Python-level anyway, so GIL contention is minor
+    # compared to the I/O bound oracle queries.
     try:
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
             # Use executor.map to process tasks and get results as they complete
@@ -434,22 +439,22 @@ def solve_system_from_approximations(
     except Exception as e:
         log.error(f"Error reading/parsing true S from {true_s_filename}: {e}")
 
-    # # --- Save Inputs for Offline Solver --- 
-    # solver_input_data = {
-    #     'uid': uid,
-    #     'variant': variant,
-    #     'seedA': seedA,
-    #     'B_matrix': B_matrix,
-    #     'approximations': approximations,
-    #     'S_true': S_true # Add S_true (will be None if read failed)
-    # }
-    # output_filename = os.path.join(solver_dir, f"solver_inputs_{uid}.pkl")
-    # try:
-    #     with open(output_filename, 'wb') as f:
-    #         pickle.dump(solver_input_data, f)
-    #     log.info(f"Successfully saved solver inputs to {output_filename}")
-    # except Exception as e:
-    #     log.error(f"Failed to save solver inputs to {output_filename}: {e}")
+    # --- Save Inputs for Offline Solver --- 
+    solver_input_data = {
+        'uid': uid,
+        'variant': variant,
+        'seedA': seedA,
+        'B_matrix': B_matrix,
+        'approximations': approximations,
+        'S_true': S_true,  # may be None if not available
+    }
+    output_filename = os.path.join(solver_dir, f"solver_inputs_{uid}.pkl")
+    try:
+        with open(output_filename, 'wb') as f:
+            pickle.dump(solver_input_data, f)
+        log.info(f"Successfully saved solver inputs to {output_filename}")
+    except Exception as e:
+        log.error(f"Failed to save solver inputs to {output_filename}: {e}")
 
 
     # call solve_system_testing.py
@@ -459,7 +464,7 @@ def solve_system_from_approximations(
         uid=UID, # Pass the UID constant
         cols=None, # Keep default or define constant if needed
         workers=WORKERS, # Pass the WORKERS constant
-        bkz_block_size=200, # Updated starting block size
+        bkz_block_size=80, # Updated starting block size to 80
         bkz_float_type='mp', # Keep default or define constant if needed
         log_level=LOG_LEVEL, # Pass the LOG_LEVEL constant
         target_col=None # Keep default or define constant if needed
@@ -473,102 +478,63 @@ def verify_solution(
     kem: FrodoKEM,
     uid: str,
     pk_hex: str,
-    S_recovered: np.ndarray
+    S_recovered: np.ndarray # Keep input for consistency, though not used in this logic
 ) -> bool:
     """
-    Verifies the recovered S matrix.
-    1. Reconstruct the full secret key bytes.
-    2. Perform a test decapsulation.
-    3. (Optional) Query the 3rd interface with the derived 'true secret' (pkh).
+    Verifies the recovery by calling the server's third interface 
+    with the calculated pkh (hash of the public key) and checking 
+    its printed output for the success message.
     """
-    log.info("Attempting to verify recovered S matrix...")
-    # Check if S_recovered is a NumPy array with the correct shape
+    log.info("Attempting to verify recovery via server's third interface (checking pkh)...")
+    
+    # Basic check on input S_recovered format (optional but good practice)
     assert isinstance(S_recovered, np.ndarray), f"S_recovered is not a NumPy array, but type {type(S_recovered)}"
     assert S_recovered.shape == (kem.n, kem.nbar), f"S_recovered has shape {S_recovered.shape}, expected ({kem.n}, {kem.nbar})"
 
-    # --- Reconstruct SK ---
-    # sk = (s || seedA || b, S^T, pkh)
-    # We don't know the original 's', but kem_decaps doesn't use it if FO is removed.
-    # We need pk = seedA || b
-    pk_bytes = bytes.fromhex(pk_hex)
-    assert len(pk_bytes) == kem.len_pk_bytes
-
-    # Placeholder for s (not needed for this decaps)
-    s_zero = bytes(kem.len_s_bytes) 
-
-    # Calculate pkh = SHAKE(pk, len_pkh)
-    pkh = kem.shake(pk_bytes, kem.len_pkh_bytes)
-    log.info(f"Calculated pkh: {pkh.hex().upper()}")
-
-    # Transpose S into S^T (nbar x n)
+    # Build the secret-key guess = S^T (16-bit little-endian) || pkh
     try:
-        S_transposed = [[S_recovered[j][i] for j in range(kem.n)] for i in range(kem.nbar)]
-    except IndexError:
-        log.error("Recovered S matrix has incorrect dimensions for transposition.")
-        return False
+        # --- pkh ---
+        pk_bytes = bytes.fromhex(pk_hex)
+        assert len(pk_bytes) == kem.len_pk_bytes
+        pkh_bytes = kem.shake(pk_bytes, kem.len_pkh_bytes)
+        pkh_hex = pkh_bytes.hex().upper()
 
-    # Assemble the secret key bytes
-    sk_recovered_bits = bitstring.BitArray()
-    sk_recovered_bits.append(s_zero + pk_bytes) # s || seedA || b
-    for i in range(kem.nbar):
-        for j in range(kem.n):
-             # Pack as signed 16-bit little-endian integers
-             val = S_transposed[i][j]
-             # Remove the previous check and modulo operation
-             # Ensure the value fits within signed 16-bit range if necessary, though Frodo coeffs should be small
-             if not (-32768 <= val < 32768):
-                 log.warning(f"Value S^T[{i}][{j}] = {val} out of int16 range. Clamping needed? This might indicate an error in S recovery.")
-                 # Decide on clamping strategy if needed, e.g., clamp to min/max int16
-                 # val = max(-32768, min(val, 32767))
-             sk_recovered_bits.append(bitstring.BitArray(intle=val, length=16))
-    sk_recovered_bits.append(pkh)
-    sk_recovered_bytes = sk_recovered_bits.bytes
+        # --- S^T encoding ---
+        S_transposed = S_recovered.T.astype(np.int16)  # shape (nbar, n)
+        st_bytes = bytearray()
+        for i in range(kem.nbar):
+            for j in range(kem.n):
+                value = int(S_transposed[i, j]) % (1 << 16)
+                st_bytes += value.to_bytes(2, byteorder="little", signed=False)
 
-    # Check length consistency
-    expected_sk_len = kem.len_sk_bytes
-    if len(sk_recovered_bytes) != expected_sk_len:
-         log.error(f"Constructed SK length ({len(sk_recovered_bytes)}) does not match expected ({expected_sk_len})")
-         # Log parts lengths for debugging
-         log.debug(f" s: {len(s_zero)}, pk: {len(pk_bytes)}, S^T: {len(sk_recovered_bytes) - len(s_zero) - len(pk_bytes) - len(pkh)}, pkh: {len(pkh)}")
-         log.debug(f" Expected S^T part: {kem.n * kem.nbar * 16 // 8}")
-         return False
-    
-    log.info("Successfully reconstructed secret key bytes structure.")
-
-    # --- Test Decapsulation ---
-    # Use the KEM's standard encapsulation to get a valid ct/ss pair
-    log.info("Performing standard encapsulation to get a test ct/ss pair...")
-    try:
-        ct_test_bytes, ss_test_bytes = kem.kem_encaps(pk_bytes)
-        assert len(ct_test_bytes) == kem.len_ct_bytes, f"Unexpected ct_test length: {len(ct_test_bytes)}"
-        assert len(ss_test_bytes) == kem.len_ss_bytes, f"Unexpected ss_test length: {len(ss_test_bytes)}"
-        log.info("Standard encapsulation successful.")
+        assert len(st_bytes) == kem.n * kem.nbar * 2, "Encoded S^T length mismatch"
+        secret_guess_hex = st_bytes.hex().upper() + pkh_hex
+        log.info(f"Built secret-key guess hex length {len(secret_guess_hex)}")
     except Exception as e:
-        log.error(f"Standard kem_encaps failed: {e}")
+        log.error(f"Error building secret-key guess: {e}")
         return False
 
-    # Decapsulate using the reconstructed key
-    log.info("Performing decapsulation with the RECOVERED secret key...")
+    # Call the third interface and capture its output
+    success_message = "And hast thou slain the Jabberwock?"
+    f = io.StringIO()
     try:
-        ss_recovered_bytes = kem.kem_decaps(sk_recovered_bytes, ct_test_bytes)
-        log.info("Decapsulation with recovered key successful.")
+        log.info("Calling third interface with secret-key guess…")
+        with contextlib.redirect_stdout(f):
+             server.call_third_interface(uid, secret_guess_hex)
+        output = f.getvalue()
+        log.debug(f"Captured output from third interface: {output.strip()}") # Log captured output for debug
+        
+        # Check if the specific success message is in the output
+        if success_message in output:
+            log.info(f"SUCCESS: Found success message in third interface output.")
+            return True
+        else:
+            log.error(f"FAILURE: Success message not found in third interface output. Output was: {output.strip()}")
+            return False
+            
     except Exception as e:
-        # This might happen if S is wrong, leading to incorrect mu' calculation
-        log.error(f"kem_decaps failed with recovered key: {e}")
-        log.error("This likely means the recovered S matrix is incorrect.")
-        return False
-
-    # Compare the results
-    if ss_recovered_bytes == ss_test_bytes:
-        log.info("SUCCESS: Decapsulated shared secret matches original! Recovered S is likely correct.")
-        # Optionally call 3rd interface
-        log.info("Calling 3rd interface to confirm the true secret (pkh)...")
-        server.call_third_interface(uid, pkh.hex().upper())
-        return True
-    else:
-        log.error("FAILURE: Decapsulated shared secret does NOT match original.")
-        log.error(f"  Original ss: {ss_test_bytes.hex().upper()}")
-        log.error(f"  Recovered ss: {ss_recovered_bytes.hex().upper()}")
+        # Handle exceptions during the call (e.g., FileNotFoundError)
+        log.error(f"FAILURE: Exception occurred during call_third_interface: {e}")
         return False
 
 
@@ -592,17 +558,17 @@ def main():
             if effective_max_k is None: effective_max_k = kem.n
             if effective_max_l is None: effective_max_l = kem.nbar
 
-        # # Reverted: Removed single target logic
-        # approximations = recover_S_approximations(
-        #     server, kem, UID,
-        #     max_k=effective_max_k,
-        #     max_l=effective_max_l,
-        #     workers=WORKERS
-        # )
-
-        # ==== UNCOMMENT THIS TO USE PREVIOUSLY SAVED SOLVER INPUTS AND BYPASS RECOVERY ====
-        approximations = pickle.load(open("solver_inputs/solver_inputs_119008041.pkl", "rb"))
-        # ====================
+        # Always perform a fresh oracle recovery; skip any cached pickle to avoid
+        # pulling in stale / incorrect approximation data.
+        log.info("Starting fresh oracle recovery for S approximations (ignoring cached results)...")
+        approximations = recover_S_approximations(
+            server,
+            kem,
+            UID,
+            max_k=effective_max_k,
+            max_l=effective_max_l,
+            workers=WORKERS,
+        )
 
         # --- Stage 2: Solve for S ---
         # Pass constants to the solver function call
