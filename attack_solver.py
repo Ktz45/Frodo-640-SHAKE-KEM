@@ -1,4 +1,3 @@
-import argparse
 import logging
 import os
 import time
@@ -18,18 +17,28 @@ import bitstring
 from frodokem import FrodoKEM
 from local_server import LocalServer
 import aes_cbc
-from matrices import matrix_add, matrix_mul, matrix_sub # Assuming matrix ops are needed later
+from matrices import matrix_add, matrix_mul, matrix_sub
+import solve_system_testing # Assuming matrix ops are needed later
 
-# --- Constants ---
+# --- Configuration Constants ---
 VARIANT = "FrodoKEM-640-SHAKE"
-DEFAULT_UID = '119008041' # Replace with your UID if necessary
+UID = '119008041' # User ID for the server. Was DEFAULT_UID
+DETERM = False # Use deterministic keys (requires existing student file). Was --determ flag.
+LOG_LEVEL = "INFO" # Logging level. Was --log-level argument.
+MAX_K = None # Maximum row index (k) of S to recover. Was --max-k argument.
+MAX_L = None # Maximum column index (l) of S to recover. Was --max-l argument.
+WORKERS = None # Number of parallel workers for approximation gathering. Was --workers argument. Set to None for default (half CPU).
+
+# --- Internal Constants ---
 SALT_HEX = "0" * 64 # Correct length: 64 hex chars = 32 bytes
 BYTES_SALT = bytes.fromhex(SALT_HEX)
 FIXED_AES_PLAINTEXT = b"\x01" * 16
 
 
 # --- Logging Setup ---
-logging.basicConfig(level=logging.INFO,
+# Configure logging level based on the constant
+log_level_numeric = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
+logging.basicConfig(level=log_level_numeric,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 log = logging.getLogger(__name__)
 
@@ -87,7 +96,6 @@ def query_oracle(
     uid: str, 
     c1_bytes: bytes, 
     c2_bytes: bytes,
-    salt_override: Optional[bytes] = None # Added optional salt override
 ) -> str:
     """
     Queries the server's second interface with packed c1 and c2.
@@ -95,7 +103,7 @@ def query_oracle(
     Returns the AES ciphertext hex string.
     """
     # Determine which salt to use
-    salt_to_use = salt_override if salt_override is not None else BYTES_SALT
+    salt_to_use = BYTES_SALT
     
     # Assertions use the salt_to_use
     assert len(c1_bytes) == kem.mbar * kem.n * kem.D // 8, f"Incorrect c1 length: {len(c1_bytes)}"
@@ -138,7 +146,6 @@ def find_rounding_threshold(
     target_M_i: int,
     target_M_j: int,
     search_range: int,
-    correct_salt_bytes: bytes # Added salt argument
 ) -> Optional[int]:
     """
     Performs a binary search for the delta value placed in C[target_M_i][target_M_j]
@@ -152,8 +159,7 @@ def find_rounding_threshold(
         base_aes_ct_hex: The AES ciphertext result when C is the zero matrix.
         target_M_i: The row index in M (and C) to place delta.
         target_M_j: The column index in M (and C) to place delta.
-        search_range: The upper bound for the delta search (e.g., kem.q // 2).
-        correct_salt_bytes: The correct salt bytes to use for querying the oracle.
+        search_range: The upper bound for the delta search
 
     Returns:
         The smallest delta that causes a change, or None if no change found.
@@ -188,7 +194,7 @@ def find_rounding_threshold(
             break 
 
         # Query oracle
-        aes_delta_hex = query_oracle(server, kem, uid, c1_bytes, c2_delta_bytes, salt_override=correct_salt_bytes)
+        aes_delta_hex = query_oracle(server, kem, uid, c1_bytes, c2_delta_bytes)
 
         # Check if changed AND if this delta is the smallest found so far
         if aes_delta_hex != base_aes_ct_hex and (threshold_delta is None or delta < threshold_delta):
@@ -205,18 +211,19 @@ def find_rounding_threshold(
             log.debug(f"  Delta {delta}: Output SAME or smaller threshold exists. New low={low}.")
             
     if threshold_delta is not None:
-         log.debug(f"Found threshold delta = {threshold_delta} for M[{target_M_i}][{target_M_j}]")
+        log.debug(f"Found threshold delta = {threshold_delta} for M[{target_M_i}][{target_M_j}]")
     else:
-         log.warning(f"No threshold delta found for M[{target_M_i}][{target_M_j}] in range [0, {search_range}]")
+        log.warning(f"No threshold delta found for M[{target_M_i}][{target_M_j}] in range [0, {search_range}]")
+        raise Exception(f"No threshold delta found for M[{target_M_i}][{target_M_j}] in range [0, {search_range}]")
 
     return threshold_delta
 
-def _recover_single_approximation(args: Tuple[Optional[LocalServer], str, str, int, int, bytes]) -> Tuple[int, int, Optional[int]]:
+def _recover_single_approximation(args: Tuple[Optional[LocalServer], str, str, int, int]) -> Tuple[int, int, Optional[int]]:
     """Worker function to recover approximation for a single S[k][l].
        Initializes its own KEM instance.
     """
     # Unpack arguments - Pass variant string instead of kem object, pass correct salt.
-    server, variant, uid, k, l, correct_salt_bytes = args # Added correct_salt_bytes
+    server, variant, uid, k, l = args
 
     # Initialize KEM instance within the worker
     try:
@@ -228,8 +235,9 @@ def _recover_single_approximation(args: Tuple[Optional[LocalServer], str, str, i
         log.error(f"Worker S[{k}][{l}]: Failed to initialize FrodoKEM({variant}) or assertion failed: {e}")
         return (k, l, None)
 
-    q_quarter = kem.q // (2**kem.B)
-    log.debug(f"Worker started for S[{k}][{l}]")
+    # q_quarter = 32768 // 4
+    q_quarter = kem.q // 4
+    log.debug(f"Worker started for S[{k}][{l}] with q_quarter={q_quarter}")
 
     # Precompute C=0 matrix and its packed form
     C_zero = [[0] * kem.nbar for _ in range(kem.mbar)]
@@ -237,13 +245,13 @@ def _recover_single_approximation(args: Tuple[Optional[LocalServer], str, str, i
         c2_zero_bytes = kem.pack(C_zero)
     except Exception as e:
         log.error(f"Worker S[{k}][{l}]: Error packing C_zero: {e}")
-        return (k, l, None)
+        raise Exception(f"Worker S[{k}][{l}]: Error packing C_zero: {e}")
 
     # --- Construct B' matrix ---
     r = l
     if not (0 <= r < kem.mbar and 0 <= k < kem.n):
         log.error(f"Worker S[{k}][{l}]: Indices out of bounds r={r}, k={k}")
-        return (k, l, None)
+        raise Exception(f"Worker S[{k}][{l}]: Indices out of bounds r={r}, k={k}")
     B_prime = [[0] * kem.n for _ in range(kem.mbar)]
     B_prime[r][k] = 1
 
@@ -253,38 +261,39 @@ def _recover_single_approximation(args: Tuple[Optional[LocalServer], str, str, i
         assert len(c1_bytes) == kem.mbar * kem.n * kem.D // 8
     except Exception as e:
         log.error(f"Worker S[{k}][{l}]: Failed to pack B_prime: {e}")
-        return (k, l, None)
+        raise Exception(f"Worker S[{k}][{l}]: Failed to pack B_prime: {e}")
 
     # --- Get Base Oracle Output ---
     if server is None:
          log.error(f"Worker S[{k}][{l}]: Server object is None.")
-         return (k, l, None)
+         raise Exception(f"Worker S[{k}][{l}]: Server object is None.")
     try:
-        # Pass the correct salt to query_oracle
-        base_aes_ct_hex = query_oracle(server, kem, uid, c1_bytes, c2_zero_bytes, salt_override=correct_salt_bytes)
+        base_aes_ct_hex = query_oracle(server, kem, uid, c1_bytes, c2_zero_bytes)
     except Exception as e:
         log.error(f"Worker S[{k}][{l}]: Failed to query oracle for base CT: {e}")
-        return (k, l, None)
+        raise Exception(f"Worker S[{k}][{l}]: Failed to query oracle for base CT: {e}")
 
     # --- Find Rounding Threshold ---
     try:
-        # Pass the correct salt to query_oracle calls within find_rounding_threshold
-        # This requires modifying find_rounding_threshold as well
         delta_thresh = find_rounding_threshold(
-            server=server, kem=kem, uid=uid,
-            c1_bytes=c1_bytes, base_aes_ct_hex=base_aes_ct_hex,
-            target_M_i=r, target_M_j=l,
-            search_range=(kem.q // (2**(kem.B+1))), # Corrected search range (4096)
-            correct_salt_bytes=correct_salt_bytes # Pass salt down
+            server=server, 
+            kem=kem, 
+            uid=uid,
+            c1_bytes=c1_bytes, 
+            base_aes_ct_hex=base_aes_ct_hex,
+            target_M_i=r, 
+            target_M_j=l,
+            search_range=(kem.q // 4),
         )
     except Exception as e:
         log.error(f"Worker S[{k}][{l}]: Error in find_rounding_threshold: {e}")
-        return (k, l, None)
+        raise Exception(f"Worker S[{k}][{l}]: Error in find_rounding_threshold: {e}")
 
     if delta_thresh is not None:
         log.debug(f"Worker success for S[{k}][{l}] ≈ {delta_thresh} (mod {q_quarter})")
     else:
         log.warning(f"Worker failed to find threshold for S[{k}][{l}]")
+        raise Exception(f"Worker failed to find threshold for S[{k}][{l}]")
 
     return (k, l, delta_thresh)
 
@@ -295,7 +304,6 @@ def recover_S_approximations(
     max_k: Optional[int] = None,
     max_l: Optional[int] = None,
     workers: Optional[int] = None
-    # Removed target_k_single, target_l_single args
 ) -> List[Tuple[int, int, Optional[int]]]:
     """
     Recovers approximations for S[k][l] up to max_k and max_l using parallel workers.
@@ -313,11 +321,10 @@ def recover_S_approximations(
 
     # --- Prepare tasks for parallel execution --- 
     tasks = []
-    # Reverted: Always target up to max_k, max_l
     log.info(f"Targeting entries up to k={target_k-1}, l={target_l-1}")
     for k in range(target_k):
         for l in range(target_l):
-             tasks.append((server, VARIANT, uid, k, l, correct_salt_bytes))
+             tasks.append((server, VARIANT, uid, k, l))
              
     total_entries = len(tasks)
     if total_entries == 0:
@@ -349,7 +356,7 @@ def recover_S_approximations(
                     
                     # Log success/failure rate for this entry
                     if delta_thresh is not None:
-                        log.info(f"  Recovered S[{k}][{l}] ≈ {delta_thresh} (mod {kem.q // (2**kem.B)})")
+                        log.info(f"  Recovered S[{k}][{l}] ≈ {delta_thresh} (mod {kem.q // 4})")
                     else:
                         log.error(f"  Failed to recover approximation for S[{k}][{l}]")
 
@@ -368,100 +375,6 @@ def recover_S_approximations(
     
     return approximations_list
 
-# --- Lattice Solver Worker (Copied from solve_system_testing.py) ---
-def solve_column_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, int, int, int, int, int, str]) -> Tuple[int, Optional[np.ndarray]]:
-    """Solves for one column s_j_unknown using lattice reduction."""
-    col_j, A_np, B_np, S_known_matrix_np, q, n, nbar, modulus_approx, bkz_block_size, bkz_float_type = args # bkz_float_type is now a string
-    worker_log_prefix = f"[SolverWorker {col_j}]" # Changed prefix slightly
-    # Use existing logger from attack_solver
-    log.info(f"{worker_log_prefix} Starting BKZ solve (block size {bkz_block_size}, type {bkz_float_type})...")
-
-    try:
-        # Calculate target vector b'_j = (b_j - A * s_{j,known}) mod q
-        s_j_known = S_known_matrix_np[:, col_j]
-        b_j = B_np[:, col_j]
-        log.debug(f"{worker_log_prefix} Calculating A * s_j_known...")
-        A_s_j_known = (A_np @ s_j_known) % q
-        b_prime_j = (b_j - A_s_j_known + q) % q # Ensure positive result
-        log.debug(f"{worker_log_prefix} Calculated b'_j.")
-
-        # Calculate A' = (modulus_approx * A) mod q
-        log.debug(f"{worker_log_prefix} Calculating A' = {modulus_approx} * A...")
-        A_prime = (modulus_approx * A_np) % q
-        log.debug(f"{worker_log_prefix} Calculated A'.")
-
-        # --- Construct the Lattice Basis ---
-        # Trying standard search-LWE basis: find (s, e) st A's - b' = -e mod q
-        # Dimension n+1
-        basis_list = [[0] * (n + 1) for _ in range(n + 1)]
-        log.info(f"{worker_log_prefix} Constructing basis matrix ({n+1}x{n+1})...")
-        for r in range(n):
-            for c in range(n):
-                basis_list[r][c] = int(A_prime[r, c]) # Convert np int64 potentially
-            basis_list[r][n] = int(b_prime_j[r])
-        basis_list[n][n] = q
-
-        M = fpylll.IntegerMatrix(n + 1, n + 1)
-        for r in range(n + 1):
-             for c in range(n + 1):
-                  M[r, c] = basis_list[r][c]
-        log.info(f"{worker_log_prefix} Basis matrix created.")
-
-        # --- Perform Lattice Reduction ---
-        log.info(f"{worker_log_prefix} Starting BKZ reduction...")
-        start_time = time.time()
-        params = fpylll.BKZ.Param(block_size=bkz_block_size, strategies=None, float_type=bkz_float_type, auto_abort=True)
-        try:
-             reduced_basis = fpylll.BKZ.reduction(M, params)
-        except Exception as e_bkz:
-             log.error(f"{worker_log_prefix} BKZ reduction algorithm failed: {e_bkz}")
-             return col_j, None
-        duration = time.time() - start_time
-        log.info(f"{worker_log_prefix} BKZ reduction finished in {duration:.2f}s.")
-
-        # --- Extract Solution ---
-        # We look for a vector v = (s_unknown * factor, -factor) where factor is small (ideally +/- 1).
-        # Check the first few vectors in the reduced basis.
-        log.info(f"{worker_log_prefix} Analyzing first few vectors of reduced basis...")
-        solution_s_unknown = None
-        num_vectors_to_check = 5 # Check first 5 vectors
-
-        for i in range(min(num_vectors_to_check, n + 1)): # Ensure we don't check more vectors than available
-            log.debug(f"{worker_log_prefix} Checking basis vector {i}")
-            vector_list = [int(reduced_basis[i, c]) for c in range(n + 1)]
-            candidate_vector = np.array(vector_list, dtype=np.int64)
-            last_coord = candidate_vector[n]
-
-            # Original check: Look for factor = +/- 1
-            if abs(last_coord) == 1:
-                log.info(f"{worker_log_prefix} Found candidate vector {i} with last coord {-last_coord}.")
-                potential_s_unknown = candidate_vector[:n] * (-last_coord)
-
-                # Verification step
-                e_check = (A_prime @ potential_s_unknown - b_prime_j + q) % q
-                e_check_signed = np.where(e_check >= q // 2, e_check - q, e_check)
-                max_abs_error = np.max(np.abs(e_check_signed))
-                log.info(f"{worker_log_prefix} Candidate {i} check: Max absolute error = {max_abs_error}")
-
-                # Heuristic check for small error (adjust threshold if needed)
-                if max_abs_error < q / 8:
-                    log.info(f"{worker_log_prefix} Candidate vector {i} verified (error seems small). Solution found.")
-                    solution_s_unknown = potential_s_unknown
-                    break # Stop searching once a valid solution is found
-                else:
-                    log.warning(f"{worker_log_prefix} Candidate vector {i} failed verification (error too large: {max_abs_error}).")
-            # else: # Optional: Log if last_coord is not +/- 1 for this vector
-            #     log.debug(f"{worker_log_prefix} Basis vector {i} last coord is {last_coord}, skipping.")
-
-        if solution_s_unknown is None:
-             log.warning(f"{worker_log_prefix} No suitable solution vector found in the first {num_vectors_to_check} basis vectors.")
-
-    except Exception as e:
-        log.exception(f"{worker_log_prefix} Unexpected error in worker: {e}") # Log full traceback
-        return col_j, None
-
-    return col_j, solution_s_unknown
-
 
 def solve_system_from_approximations(
     kem: FrodoKEM,
@@ -469,10 +382,9 @@ def solve_system_from_approximations(
     seedA: bytes,
     B_matrix: Matrix,
     approximations: List[Tuple[int, int, Optional[int]]]
-    # Removed BKZ/worker args from signature
 ) -> Matrix:
     """
-    Placeholder function. Saves the inputs needed for the actual solver 
+    Saves the inputs needed for the actual solver called at the end of this function
     (solve_system_testing.py) to a pickle file.
     Returns a dummy matrix.
     """
@@ -522,28 +434,38 @@ def solve_system_from_approximations(
     except Exception as e:
         log.error(f"Error reading/parsing true S from {true_s_filename}: {e}")
 
-    # --- Save Inputs for Offline Solver --- 
-    solver_input_data = {
-        'uid': uid,
-        'variant': variant,
-        'seedA': seedA,
-        'B_matrix': B_matrix,
-        'approximations': approximations,
-        'S_true': S_true # Add S_true (will be None if read failed)
-    }
-    output_filename = os.path.join(solver_dir, f"solver_inputs_{uid}.pkl")
-    try:
-        with open(output_filename, 'wb') as f:
-            pickle.dump(solver_input_data, f)
-        log.info(f"Successfully saved solver inputs to {output_filename}")
-    except Exception as e:
-        log.error(f"Failed to save solver inputs to {output_filename}: {e}")
+    # # --- Save Inputs for Offline Solver --- 
+    # solver_input_data = {
+    #     'uid': uid,
+    #     'variant': variant,
+    #     'seedA': seedA,
+    #     'B_matrix': B_matrix,
+    #     'approximations': approximations,
+    #     'S_true': S_true # Add S_true (will be None if read failed)
+    # }
+    # output_filename = os.path.join(solver_dir, f"solver_inputs_{uid}.pkl")
+    # try:
+    #     with open(output_filename, 'wb') as f:
+    #         pickle.dump(solver_input_data, f)
+    #     log.info(f"Successfully saved solver inputs to {output_filename}")
+    # except Exception as e:
+    #     log.error(f"Failed to save solver inputs to {output_filename}: {e}")
 
-    # Return a dummy matrix as the solve step is not performed here
-    log.warning("Solve step skipped in attack_solver.py. Run solve_system_testing.py separately.")
-    log.warning("--- Exiting solve_system_from_approximations (PLACEHOLDER) ---")
-    dummy_S = [[-999] * kem.nbar for _ in range(kem.n)]
-    return dummy_S
+
+    # call solve_system_testing.py
+    # Pass configuration using constants and set cmdline=False
+    S_recovered_matrix = solve_system_testing.main(
+        cmdline=False, # Call as a function, not from command line
+        uid=UID, # Pass the UID constant
+        cols=None, # Keep default or define constant if needed
+        workers=WORKERS, # Pass the WORKERS constant
+        bkz_block_size=200, # Updated starting block size
+        bkz_float_type='mp', # Keep default or define constant if needed
+        log_level=LOG_LEVEL, # Pass the LOG_LEVEL constant
+        target_col=None # Keep default or define constant if needed
+    )
+
+    return S_recovered_matrix
 
 
 def verify_solution(
@@ -551,7 +473,7 @@ def verify_solution(
     kem: FrodoKEM,
     uid: str,
     pk_hex: str,
-    S_recovered: Matrix
+    S_recovered: np.ndarray
 ) -> bool:
     """
     Verifies the recovered S matrix.
@@ -560,8 +482,9 @@ def verify_solution(
     3. (Optional) Query the 3rd interface with the derived 'true secret' (pkh).
     """
     log.info("Attempting to verify recovered S matrix...")
-    assert isinstance(S_recovered, list) and len(S_recovered) == kem.n, f"S_recovered is not a list of length {kem.n}"
-    assert all(isinstance(row, list) and len(row) == kem.nbar for row in S_recovered), f"S_recovered rows are not lists of length {kem.nbar}"
+    # Check if S_recovered is a NumPy array with the correct shape
+    assert isinstance(S_recovered, np.ndarray), f"S_recovered is not a NumPy array, but type {type(S_recovered)}"
+    assert S_recovered.shape == (kem.n, kem.nbar), f"S_recovered has shape {S_recovered.shape}, expected ({kem.n}, {kem.nbar})"
 
     # --- Reconstruct SK ---
     # sk = (s || seedA || b, S^T, pkh)
@@ -589,12 +512,15 @@ def verify_solution(
     sk_recovered_bits.append(s_zero + pk_bytes) # s || seedA || b
     for i in range(kem.nbar):
         for j in range(kem.n):
-             # Ensure values are within uint16 range if packing directly
+             # Pack as signed 16-bit little-endian integers
              val = S_transposed[i][j]
-             if not (0 <= val < 65536):
-                 log.warning(f"Value S^T[{i}][{j}] = {val} out of uint16 range during packing. Clamping or error? Using modulo for now.")
-                 val = val % 65536 # Or handle more gracefully
-             sk_recovered_bits.append(bitstring.BitArray(uintle=val, length=16))
+             # Remove the previous check and modulo operation
+             # Ensure the value fits within signed 16-bit range if necessary, though Frodo coeffs should be small
+             if not (-32768 <= val < 32768):
+                 log.warning(f"Value S^T[{i}][{j}] = {val} out of int16 range. Clamping needed? This might indicate an error in S recovery.")
+                 # Decide on clamping strategy if needed, e.g., clamp to min/max int16
+                 # val = max(-32768, min(val, 32767))
+             sk_recovered_bits.append(bitstring.BitArray(intle=val, length=16))
     sk_recovered_bits.append(pkh)
     sk_recovered_bytes = sk_recovered_bits.bytes
 
@@ -649,52 +575,50 @@ def verify_solution(
 # --- Main Execution ---
 
 def main():
-    parser = argparse.ArgumentParser(description="Attack script for modified FrodoKEM.")
-    parser.add_argument("-u", "--uid", type=str, default=DEFAULT_UID, help="User ID for the server.")
-    parser.add_argument("--determ", action="store_true", help="Use deterministic keys (requires existing student file). Run non-determ first.")
-    parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO", help="Set logging level.")
-    parser.add_argument("--max-k", type=int, default=None, help="Maximum row index (k) of S to recover (exclusive). Default: All rows.")
-    parser.add_argument("--max-l", type=int, default=None, help="Maximum column index (l) of S to recover (exclusive). Default: All columns.")
-    parser.add_argument("-w", "--workers", type=int, default=None, help="Number of parallel workers to use for approximation gathering. Default: Half CPU cores.")
-    args = parser.parse_args()
+    # Arguments are now constants defined above
 
-    log.setLevel(getattr(logging, args.log_level.upper()))
+    log.setLevel(log_level_numeric) # Use the numeric level set earlier
 
     try:
-        server, kem, pk_hex, seedA, B_matrix = setup_server_and_kem(args.uid, args.determ)
+        # Use constants directly instead of args.xxx
+        server, kem, pk_hex, seedA, B_matrix = setup_server_and_kem(UID, DETERM)
 
         # --- Stage 1: Gather Approximations ---
-        effective_max_k = args.max_k
-        effective_max_l = args.max_l
+        effective_max_k = MAX_K
+        effective_max_l = MAX_L
         limit_used = False
         if effective_max_k is not None or effective_max_l is not None:
             limit_used = True
             if effective_max_k is None: effective_max_k = kem.n
             if effective_max_l is None: effective_max_l = kem.nbar
 
-        # Reverted: Removed single target logic
-        approximations = recover_S_approximations(
-            server, kem, args.uid,
-            max_k=effective_max_k,
-            max_l=effective_max_l,
-            workers=args.workers
-        )
+        # # Reverted: Removed single target logic
+        # approximations = recover_S_approximations(
+        #     server, kem, UID,
+        #     max_k=effective_max_k,
+        #     max_l=effective_max_l,
+        #     workers=WORKERS
+        # )
+
+        # ==== UNCOMMENT THIS TO USE PREVIOUSLY SAVED SOLVER INPUTS AND BYPASS RECOVERY ====
+        approximations = pickle.load(open("solver_inputs/solver_inputs_119008041.pkl", "rb"))
+        # ====================
 
         # --- Stage 2: Solve for S ---
-        # This part needs the actual implementation (Lattice reduction / GE)
-        S_recovered = solve_system_from_approximations(kem, args.uid, seedA, B_matrix, approximations)
+        # Pass constants to the solver function call
+        S_recovered = solve_system_from_approximations(kem, UID, seedA, B_matrix, approximations)
 
         # --- Stage 3: Verify ---
-        # Skip verification if any limits were used (max_k, max_l, or limit_entries)
+        # Skip verification if any limits were used
         if not limit_used:
-             verify_solution(server, kem, args.uid, pk_hex, S_recovered)
+             verify_solution(server, kem, UID, pk_hex, S_recovered)
         else:
-             log.warning("Skipping verification due to recovery limits (--max-k/--max-l).")
+             log.warning("Skipping verification due to recovery limits (MAX_K/MAX_L constants were set).")
 
     except FileNotFoundError as e:
-        log.error(f"File not found: {e}. If using --determ, ensure student file exists.")
+        log.error(f"File not found: {e}. If using DETERM=True, ensure student file exists.")
     except Exception as e:
         log.exception(f"An unexpected error occurred: {e}") # Log full traceback
 
 if __name__ == "__main__":
-    main() 
+    main()

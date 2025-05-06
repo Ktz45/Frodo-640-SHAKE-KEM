@@ -18,12 +18,6 @@ import argparse
 import hashlib  # for computing pkh (True Secret) from public key
 import bitstring  # to assemble reconstructed secret key
 
-class ServerMode(Enum):
-    REMOTE = 1
-    LOCAL = 2
-
-MODE = ServerMode.LOCAL
-VARIANT = "FrodoKEM-640-SHAKE"
 BASE_URL: str = "http://sp25cmsc656.cs.umd.edu:5001/"
 TEST_URL = f'{BASE_URL}/check'
 first_interface = f"{BASE_URL}/1st-interface"
@@ -48,22 +42,16 @@ def matrix_gen_c2(kem, R, B, E2, K, delta, delta_i, delta_j):
     c2 = kem.pack(C)
     return c2
 
-
-
 def encaps(kem, matrix_set, delta=0, delta_i=0, delta_j=0):
     """
     Emulate kem_encaps with custom set terms
     """
-    # A = kem.gen(bytes.fromhex(seedA))
-    # B = kem.unpack(bytes.fromhex(b), 640, 8)
-    R = [[1 for j in range(640)] for i in range(8)]
-    E1 = [[Q for j in range(640)] for i in range(8)]
-    E2 = [[0 for j in range(8)] for i in range(8)]
-    K = [[Q//4 for j in range(8)] for i in range(8)] # q/4 * (8x8 matrix of 1s)
     c1 = matrix_gen_c1(kem, matrix_set.R, matrix_set.A, matrix_set.E1)
     c2 = matrix_gen_c2(kem, matrix_set.R, matrix_set.B, matrix_set.E2, matrix_set.K, delta, delta_i, delta_j)
-    ss = kem.decode(K)
+    ss = kem.decode(matrix_set.K)
     ct = c1 + c2 + BYTES_SALT
+    if len(ss) == 4:
+        ss = ss + b"\x01" * 12
     return ct, ss
 
 def permute_delta(server, uid, kem, matrix_set, c1, ss, deltaMax, delta_i, delta_j):
@@ -73,6 +61,7 @@ def permute_delta(server, uid, kem, matrix_set, c1, ss, deltaMax, delta_i, delta
     low = 0
     high = deltaMax
     delta = (high + low) // 2
+    failed = False
     while low <= high:
         delta = (high + low) // 2
         c2 = matrix_gen_c2(kem, matrix_set.R, matrix_set.B, matrix_set.E2, matrix_set.K, delta, delta_i, delta_j)
@@ -80,13 +69,26 @@ def permute_delta(server, uid, kem, matrix_set, c1, ss, deltaMax, delta_i, delta
         aes_ct = server.call_second_interface(uid, ct.hex().upper())
         failed = False
         try:
-            aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex()
+            aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct))
         except ValueError:
             failed = True
             high = delta - 1
         if not failed:
             low = delta + 1
+    if failed:
+        delta = delta - 1
     return delta
+
+def find_key(aes_ct, ss):
+    byte_array = bytearray(ss)
+    for i in range(16):
+        for bitflip in range(1, 255): # TODO: find a way to scale this down
+            byte_array[i] = byte_array[i] ^ bitflip
+            test_ct = aes_cbc.encrypt_aes_128_cbc(byte_array.hex().upper())
+            if(test_ct.hex().upper() == aes_ct):
+                return byte_array.hex().upper(), i, bitflip
+            byte_array[i] = byte_array[i] ^ bitflip
+    return None, None, None
 
 @lru_cache(maxsize=100_000)
 def _oracle_cached(ct_hex: str):
@@ -109,25 +111,33 @@ def oracle(server, uid, bprime, c2) -> bytes:
 _oracle_cached.cache = {}
 
 def _recover_coeff(args):
-    i, j, seedA, b, kem, uid, server = args
-    delta = permute_delta(server,uid, kem, seedA, b, Q, i, j)
-    return (i, j, delta)
+    server,uid, kem, matrix_set, c1, ss, Q, i, j = args
+    delta = permute_delta(server,uid, kem, matrix_set, c1, ss, Q, i, j)
+    ct, ss = encaps(kem, matrix_set, delta=(delta + 1), delta_i=i, delta_j=j)
+    aes_ct = server.call_second_interface(UID, ct.hex().upper())
+    key, bitflip, byte_num = find_key(aes_ct, ss)
+    if key is None or bitflip is None or byte_num is None:
+        raise ValueError(f"Failed to find key for ({i},{j})")
+    KPrime = kem.encode(bytes.fromhex(key))
+    # TODO: find equation based on delta and KPrime
+    return (i, j, delta, KPrime)
 
 
-def recover_secret_parallel(server, uid, seedA, b, rows=None, cols=None, workers=None):
-    kem = FrodoKEM(VARIANT)
+def recover_secret_parallel(server, variant, uid, seedA, b, rows=None, cols=None, workers=None):
+    kem = FrodoKEM(variant)
     rows = rows or kem.n
     cols = cols or kem.nbar
     print(f"[recover] target matrix size: {rows}x{cols}")
 
-    # blank_bprime = [[0]*kem.n for _ in range(kem.nbar)]
-    # base_cipher = oracle(server, uid, blank_bprime, [[0]*kem.nbar for _ in range(kem.nbar)])
+    matrix_set = MatrixSet(rows, cols, variant, seedA=seedA, b=b)
+    ct, ss = encaps(kem, matrix_set)
+    c1 = ct[0:(int(kem.mbar * kem.n * kem.D / 8))]
 
     start = time.time()
     tasks = []
-    for i in range(rows):
+    for i in range(cols):
         for j in range(cols):
-            tasks.append((i, j, seedA, b, kem, uid, server))
+            tasks.append((server, uid, kem, matrix_set, c1, ss, Q, i, j))
 
     done = 0
     total = len(tasks)
@@ -135,10 +145,10 @@ def recover_secret_parallel(server, uid, seedA, b, rows=None, cols=None, workers
         workers = max(2, multiprocessing.cpu_count())
     S = [[0]*cols for _ in range(rows)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-        for i, j, val in ex.map(_recover_coeff, tasks):
-            S[i][j] = val
+        for i, j, delta, KPrime in ex.map(_recover_coeff, tasks):
+            S[i][j] = delta
             done += 1
-            if done % 100 == 0 or done == total:
+            if done % 8 == 0 or done == total:
                 pct = 100*done/total
                 print(f"Progress: {done}/{total} ({pct:.1f}%)")
 
@@ -148,7 +158,7 @@ def recover_secret_parallel(server, uid, seedA, b, rows=None, cols=None, workers
     exit(0)
     # Results have already been stored in S inside the loop above.
     # === verify with honest encaps ===
-    kem = FrodoKEM(VARIANT)
+    kem = FrodoKEM(variant)
     ct_bytes, ss_bytes = kem.kem_encaps(bytes.fromhex(pk_hex))
     cipher_hex = server.call_second_interface(uid, ct_bytes.hex().upper())
 
@@ -280,50 +290,42 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--size", choices=["demo","medium","full"], default="demo",
-                        help="demo=8x2, medium=16x4, full=640x8")
+    parser.add_argument("--size", choices=["small","full"], default="full",
+                        help="small=32x4, full=640x8")
+    parser.add_argument("--mode", choices=["local","remote"], default="local",
+                        help="local, remote")
     parser.add_argument("--fresh", action="store_true", help="delete existing checkpoints and student file for UID before run")
     parser.add_argument("--determ", action="store_true", help="run based on the last student file saved")
     args = parser.parse_args()
 
     server = None
-    if MODE == ServerMode.REMOTE:
+    variant = "FrodoKEM-640-SHAKE"
+    if args.mode == "remote" and args.size == "full":
         print("Remote Server")
         server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
-    elif MODE == ServerMode.LOCAL:
-        print("Local Server")
-        server = LocalServer(determ=args.determ)
+    elif args.mode == "local" and args.size == "small":
+        print("Local Server, small")
+        variant = "Small-FrodoKEM"
+        server = LocalServer(variant, determ=args.determ)
+    elif args.mode == "local":
+        print("Local Server, full")
+        server = LocalServer(variant, determ=args.determ)
+    else:
+        raise ValueError("Remote Server cannot use small size")
 
     UID = '119008041'
     server.check_server()
 
     pk, seedA, b = server.call_first_interface(UID)
-    kem_instance = FrodoKEM(VARIANT)
-    matrix_set = MatrixSet(640, 8, seedA=seedA, b=b)
-    # ct, ss =  kem_instance.kem_encaps(bytes.fromhex(pk)) # Create honest ciphertext?
-    ct, ss = encaps(kem_instance, matrix_set, delta=(0))
-    aes_ct = server.call_second_interface(UID, ct.hex().upper())
-    c1 = ct[0:(int(kem_instance.mbar * kem_instance.n * kem_instance.D / 8))]
-    delta = permute_delta(server, UID, kem_instance, matrix_set, c1, ss, Q//2, 0, 0) # TODO: Check bounding of Q
-    print(f"Found delta:{delta}")
-    print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
-    ct, ss = encaps(kem_instance, matrix_set, delta=(delta+1))
-    aes_ct = server.call_second_interface(UID, ct.hex().upper())
-    print(aes_cbc.decrypt_aes_128_cbc(ss.hex().upper(), bytes.fromhex(aes_ct)).hex())
-    print(f"{delta + 1} passed")
-    exit()
-
-
 
     size_map = {
-        "demo": (8,2),
-        "medium": (16,4),
+        "small": (32,4),
         "full": (None,None)
     }
     rows,cols = size_map[args.size]
     print(f"Launching parallel attack size={args.size} ...")
     t0=time.time()
-    S, ss_hex, pt_hex, cipher_hex = recover_secret_parallel(server, UID, seedA, b, rows=rows, cols=cols, workers=None)
+    S, ss_hex, pt_hex, cipher_hex = recover_secret_parallel(server, variant, UID, seedA, b, rows=rows, cols=cols, workers=None)
     total=time.time()-t0
     print("Recovered first row sample:", S[0][:8])
     print(f"Total attack runtime: {total/60:.2f} minutes ({total:.1f} seconds)")
@@ -346,4 +348,3 @@ if __name__ == "__main__":
         if os.path.exists(sf):
             os.remove(sf)
         _oracle_cached.cache.clear()
-

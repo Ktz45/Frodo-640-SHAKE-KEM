@@ -236,12 +236,13 @@ def solve_column_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, int
         # --- Perform Lattice Reduction ---
         log.info(f"{worker_log_prefix} Starting BKZ reduction (block size {bkz_block_size})...")
         start_time = time.time()
-        # Use BKZ.reduction, params can be tuned
-        # Pass float type string directly
-        params = BKZ.Param(block_size=bkz_block_size, strategies=None, float_type=bkz_float_type, auto_abort=True)
+        # Use BKZ.reduction, params can be tuned# Pass float type string directly
+
+        # Use BKZ.Param directly
+        #params = LLL.Param(block_size=bkz_block_size, strategies=None, float_type=bkz_float_type, auto_abort=True)
         # Wrap reduction in a try-except block
         try:
-             reduced_basis = BKZ.reduction(M, params)
+             reduced_basis = LLL.reduction(M)#, params)
              # reduced_basis = LLL.reduction(M) # LLL for faster test
         except Exception as e_bkz:
              log.error(f"{worker_log_prefix} BKZ reduction algorithm failed: {e_bkz}")
@@ -250,25 +251,12 @@ def solve_column_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, int
         log.info(f"{worker_log_prefix} BKZ reduction finished in {duration:.2f}s.")
 
         # --- Extract Solution ---
-        # Check first few vectors for the expected solution form.
-        log.info(f"{worker_log_prefix} Analyzing first few vectors of reduced basis...")
+        # Check all vectors for the expected solution form.
+        log.info(f"{worker_log_prefix} Analyzing ALL {n+1} vectors of reduced basis...")
         solution_s_unknown = None
         
-        # Determine number of vectors to check based on block size, increasing with block size
-        base_check = 5
-        increment_per_10_bs = 2 
-        # Calculate how many increments of 10 over the base block size (e.g., 20)
-        increments = max(0, (bkz_block_size - 20) // 10)
-        num_vectors_to_check = base_check + (increments * increment_per_10_bs)
-
-        # Error if we try to check more vectors than exist in the basis
-        if num_vectors_to_check > n + 1:
-            log.error(f"{worker_log_prefix} Calculated number of vectors to check ({num_vectors_to_check}) exceeds the basis size ({n+1}).")
-            return col_j, None
-        
-        log.info(f"{worker_log_prefix} Checking first {num_vectors_to_check} basis vectors (Block size: {bkz_block_size}).")
-
-        for i in range(num_vectors_to_check): # Use the calculated number
+        # Check all n+1 vectors (loop changed)
+        for i in range(n + 1): 
             log.debug(f"{worker_log_prefix} Checking basis vector {i}")
             vector_list = [int(reduced_basis[i, c]) for c in range(n + 1)]
             candidate_vector = np.array(vector_list, dtype=np.int64)
@@ -312,7 +300,7 @@ def solve_column_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, int
                     log.warning(f"{worker_log_prefix} Candidate vector {i} failed verification (error too large: {max_abs_error}).")
 
         if solution_s_unknown is None:
-             log.warning(f"{worker_log_prefix} No suitable solution vector found in the first {num_vectors_to_check} basis vectors.")
+             log.warning(f"{worker_log_prefix} No suitable solution vector found after checking all {n+1} basis vectors.") # Updated log message
 
     except Exception as e:
         log.exception(f"{worker_log_prefix} Unexpected error in worker: {e}") # Log full traceback
@@ -322,18 +310,30 @@ def solve_column_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, int
 
 
 # --- Main Execution ---
-def main():
-    parser = argparse.ArgumentParser(description="Solve FrodoKEM LWE instance using lattice reduction.")
-    parser.add_argument("uid", type=str, help="User ID for which to load solver data.")
-    parser.add_argument("--cols", type=int, default=None, help="Number of columns (0 to nbar-1) to solve (default: all).")
-    parser.add_argument("-w", "--workers", type=int, default=None, help="Number of parallel workers (default: number of CPU cores).")
-    parser.add_argument("--bkz-block-size", type=int, default=20, help="The starting BKZ block size parameter (higher is slower but stronger).")
-    # Add argument for float type precision if needed
-    parser.add_argument("--bkz-float-type", choices=['d', 'dd', 'qd', 'mp'], default='mp', help="Floating point precision for BKZ (d=double, dd=double-double, qd=quad-double, mp=MPFR). 'mp' recommended.")
-    parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO", help="Set logging level.")
-    parser.add_argument("--target-col", type=int, default=None, help="Solve only for a specific column index j.")
-    parser.add_argument("--max-retry-bkz-size", type=int, default=80, help="Maximum BKZ block size to attempt during retries.")
-    args = parser.parse_args()
+# add command line args to main for function call version
+def main(cmdline=True, uid=None, cols=None, workers=None, bkz_block_size=80, bkz_float_type='mp', log_level="INFO", target_col=None):
+    # override cmdline args if provided
+    if cmdline:
+        parser = argparse.ArgumentParser(description="Solve FrodoKEM LWE instance using lattice reduction.")
+        parser.add_argument("uid", type=str, help="User ID for which to load solver data.")
+        parser.add_argument("--cols", type=int, default=None, help="Number of columns (0 to nbar-1) to solve (default: all).")
+        parser.add_argument("-w", "--workers", type=int, default=None, help="Number of parallel workers (default: number of CPU cores).")
+        parser.add_argument("--bkz-block-size", type=int, default=80, help="The starting BKZ block size parameter (higher is slower but stronger). Default: 40")
+        parser.add_argument("--bkz-float-type", choices=['d', 'dd', 'qd', 'mp'], default='mp', help="Floating point precision for BKZ (d=double, dd=double-double, qd=quad-double, mp=MPFR). 'mp' recommended.")
+        parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO", help="Set logging level.")
+        parser.add_argument("--target-col", type=int, default=None, help="Solve only for a specific column index j.")
+        args = parser.parse_args()
+    else:
+        # Create a namespace object to mimic argparse behavior when called as a function
+        args = argparse.Namespace(
+            uid=uid,
+            cols=cols,
+            workers=workers,
+            bkz_block_size=bkz_block_size, # Use passed value (default 40 if None)
+            bkz_float_type=bkz_float_type,
+            log_level=log_level,
+            target_col=target_col
+        )
 
     log.setLevel(getattr(logging, args.log_level.upper()))
 
@@ -445,15 +445,10 @@ def main():
     # --- Looping Retry for Failed Columns ---
     failed_columns = [j for j in columns_to_process if results_map.get(j) is None]
     current_retry_block_size = args.bkz_block_size # Start from initial size
-    retry_enabled = args.max_retry_bkz_size > args.bkz_block_size # Only retry if max > start
     
-    while failed_columns and retry_enabled:
+    while failed_columns:
         next_block_size = current_retry_block_size * 2 # Double for next attempt
         
-        if next_block_size > args.max_retry_bkz_size:
-            log.warning(f"Next retry block size ({next_block_size}) would exceed max ({args.max_retry_bkz_size}). Stopping retries for columns: {failed_columns}")
-            break
-            
         # Update block size for this retry attempt
         current_retry_block_size = next_block_size
         log.info(f"--- Retrying {len(failed_columns)} failed columns ({failed_columns}) with DOUBLED BKZ block size {current_retry_block_size} ---")
@@ -493,8 +488,9 @@ def main():
         failed_columns = [j for j in failed_columns if results_map.get(j) is None]
         
     if failed_columns:
-         log.error(f"Columns {failed_columns} failed to solve even after retrying up to block size {current_retry_block_size}.")
-    elif retry_enabled and not failed_columns:
+         # This message might be less relevant now, as the loop only exits on success or external error
+         log.error(f"Loop exited with failed columns {failed_columns}, but should have retried indefinitely. This might indicate an unrecoverable error.") 
+    else:
          log.info("All columns successfully processed (potentially after retries).")
 
     # --- Reconstruct Final S Matrix ---
@@ -616,7 +612,10 @@ def main():
     print(S_recovered_matrix[:5, :num_cols_to_solve])
 
     log.info("Solver script finished.")
-    return 0 if all_solved else 1
+
+    # return the recovered S matrix
+    return S_recovered_matrix
+
 
 if __name__ == "__main__":
     import sys
