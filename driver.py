@@ -135,15 +135,16 @@ def recover_secret_parallel(server, variant, uid, seedA, b, rows=None, cols=None
     cols = cols or kem.nbar
     print(f"[recover] target matrix size: {rows}x{cols}")
 
-    matrix_set = MatrixSet(rows, cols, seedA=seedA, b=b)
-    ct, ss = encaps(kem, matrix_set)
-    c1 = ct[0:(int(kem.mbar * kem.n * kem.D / 8))]
 
     start = time.time()
     tasks = []
-    for i in range(cols):
-        for j in range(cols):
-            tasks.append((server, uid, kem, matrix_set, c1, ss, Q, i, j))
+    for r in range(1, 80):
+        matrix_set = MatrixSet(rows, cols, seedA=seedA, b=b, round=r)
+        ct, ss = encaps(kem, matrix_set)
+        c1 = ct[0:(int(kem.mbar * kem.n * kem.D / 8))]
+        for i in range(cols):
+            for j in range(cols):
+                tasks.append((server, uid, kem, matrix_set, c1, ss, Q, i, j))
 
     done = 0
     total = len(tasks)
