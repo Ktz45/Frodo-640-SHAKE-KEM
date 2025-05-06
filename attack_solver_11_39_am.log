@@ -1,0 +1,181 @@
+2025-05-06 15:39:22,267 - __main__ - INFO - Setting up server for UID: 119008041, Deterministic: False
+2025-05-06 15:39:22,974 - __main__ - INFO - Received Public Key (PK): AF786F04D9...390B9F1F2D
+2025-05-06 15:39:23,051 - __main__ - INFO - Parsed seedA and unpacked b into matrix B (640x8)
+2025-05-06 15:39:23,051 - __main__ - INFO - Starting fresh oracle recovery for S approximations (ignoring cached results)...
+2025-05-06 15:39:23,051 - __main__ - INFO - Starting recovery using 32 workers... Salt length: 32
+2025-05-06 15:39:23,051 - __main__ - INFO - Targeting entries up to k=639, l=7
+Server is up and running!
+Key pair generated and stored
+2025-05-06 15:39:52,502 - __main__ - INFO - Progress: 256/5120 (5.0%). Rate: 8.69 entries/s. ETA: 559.6s
+2025-05-06 15:39:52,502 - __main__ - INFO -   Recovered S[31][7] ≈ 4095 (mod 8192)
+2025-05-06 15:40:21,495 - __main__ - INFO - Progress: 512/5120 (10.0%). Rate: 8.76 entries/s. ETA: 526.0s
+2025-05-06 15:40:21,495 - __main__ - INFO -   Recovered S[63][7] ≈ 4096 (mod 8192)
+2025-05-06 15:40:50,647 - __main__ - INFO - Progress: 768/5120 (15.0%). Rate: 8.77 entries/s. ETA: 496.4s
+2025-05-06 15:40:50,647 - __main__ - INFO -   Recovered S[95][7] ≈ 4093 (mod 8192)
+2025-05-06 15:41:19,925 - __main__ - INFO - Progress: 1024/5120 (20.0%). Rate: 8.76 entries/s. ETA: 467.5s
+2025-05-06 15:41:19,925 - __main__ - INFO -   Recovered S[127][7] ≈ 4096 (mod 8192)
+2025-05-06 15:41:49,097 - __main__ - INFO - Progress: 1280/5120 (25.0%). Rate: 8.76 entries/s. ETA: 438.1s
+2025-05-06 15:41:49,097 - __main__ - INFO -   Recovered S[159][7] ≈ 4092 (mod 8192)
+2025-05-06 15:42:19,196 - __main__ - INFO - Progress: 1536/5120 (30.0%). Rate: 8.72 entries/s. ETA: 411.0s
+2025-05-06 15:42:19,196 - __main__ - INFO -   Recovered S[191][7] ≈ 4098 (mod 8192)
+2025-05-06 15:42:49,250 - __main__ - INFO - Progress: 1792/5120 (35.0%). Rate: 8.69 entries/s. ETA: 382.9s
+2025-05-06 15:42:49,252 - __main__ - INFO -   Recovered S[223][7] ≈ 4096 (mod 8192)
+2025-05-06 15:43:19,991 - __main__ - INFO - Progress: 2048/5120 (40.0%). Rate: 8.64 entries/s. ETA: 355.4s
+2025-05-06 15:43:19,991 - __main__ - INFO -   Recovered S[255][7] ≈ 4096 (mod 8192)
+2025-05-06 15:43:51,014 - __main__ - INFO - Progress: 2304/5120 (45.0%). Rate: 8.60 entries/s. ETA: 327.5s
+2025-05-06 15:43:51,014 - __main__ - INFO -   Recovered S[287][7] ≈ 4094 (mod 8192)
+2025-05-06 15:44:22,257 - __main__ - INFO - Progress: 2560/5120 (50.0%). Rate: 8.56 entries/s. ETA: 299.2s
+2025-05-06 15:44:22,257 - __main__ - INFO -   Recovered S[319][7] ≈ 4097 (mod 8192)
+2025-05-06 15:44:54,093 - __main__ - INFO - Progress: 2816/5120 (55.0%). Rate: 8.51 entries/s. ETA: 270.9s
+2025-05-06 15:44:54,093 - __main__ - INFO -   Recovered S[351][7] ≈ 4096 (mod 8192)
+2025-05-06 15:45:25,980 - __main__ - INFO - Progress: 3072/5120 (60.0%). Rate: 8.46 entries/s. ETA: 242.0s
+2025-05-06 15:45:25,980 - __main__ - INFO -   Recovered S[383][7] ≈ 4099 (mod 8192)
+2025-05-06 15:45:58,567 - __main__ - INFO - Progress: 3328/5120 (65.0%). Rate: 8.41 entries/s. ETA: 213.0s
+2025-05-06 15:45:58,567 - __main__ - INFO -   Recovered S[415][7] ≈ 4097 (mod 8192)
+2025-05-06 15:46:31,569 - __main__ - INFO - Progress: 3584/5120 (70.0%). Rate: 8.36 entries/s. ETA: 183.7s
+2025-05-06 15:46:31,570 - __main__ - INFO -   Recovered S[447][7] ≈ 4099 (mod 8192)
+2025-05-06 15:47:04,952 - __main__ - INFO - Progress: 3840/5120 (75.0%). Rate: 8.31 entries/s. ETA: 154.0s
+2025-05-06 15:47:04,952 - __main__ - INFO -   Recovered S[479][7] ≈ 4102 (mod 8192)
+2025-05-06 15:47:39,136 - __main__ - INFO - Progress: 4096/5120 (80.0%). Rate: 8.26 entries/s. ETA: 124.0s
+2025-05-06 15:47:39,136 - __main__ - INFO -   Recovered S[511][7] ≈ 4092 (mod 8192)
+2025-05-06 15:48:14,163 - __main__ - INFO - Progress: 4352/5120 (85.0%). Rate: 8.19 entries/s. ETA: 93.7s
+2025-05-06 15:48:14,164 - __main__ - INFO -   Recovered S[543][7] ≈ 4095 (mod 8192)
+2025-05-06 15:48:48,739 - __main__ - INFO - Progress: 4608/5120 (90.0%). Rate: 8.15 entries/s. ETA: 62.9s
+2025-05-06 15:48:48,740 - __main__ - INFO -   Recovered S[575][7] ≈ 4094 (mod 8192)
+2025-05-06 15:49:23,521 - __main__ - INFO - Progress: 4864/5120 (95.0%). Rate: 8.10 entries/s. ETA: 31.6s
+2025-05-06 15:49:23,521 - __main__ - INFO -   Recovered S[607][7] ≈ 4100 (mod 8192)
+2025-05-06 15:49:57,865 - __main__ - INFO - Progress: 5120/5120 (100.0%). Rate: 8.07 entries/s. ETA: 0.0s
+2025-05-06 15:49:57,865 - __main__ - INFO -   Recovered S[639][7] ≈ 4093 (mod 8192)
+2025-05-06 15:49:57,973 - __main__ - INFO - Finished gathering 5120/5120 approximations in 634.92s
+2025-05-06 15:49:57,975 - __main__ - INFO - --- Entering solve_system_from_approximations (PLACEHOLDER - SAVING INPUTS) ---
+2025-05-06 15:49:57,975 - __main__ - INFO -   UID: 119008041
+2025-05-06 15:49:57,975 - __main__ - INFO -   KEM Variant: FrodoKEM-640-SHAKE
+2025-05-06 15:49:57,975 - __main__ - INFO -   seedA length: 16 bytes
+2025-05-06 15:49:57,975 - __main__ - INFO -   B_matrix dimensions: 640x8
+2025-05-06 15:49:57,975 - __main__ - INFO -   Number of approximations received: 5120
+2025-05-06 15:49:57,975 - __main__ - INFO - Ensured solver input directory exists: solver_inputs/
+2025-05-06 15:49:57,975 - __main__ - INFO - Attempting to read true S from student file for debugging...
+2025-05-06 15:49:58,045 - __main__ - INFO - Successfully read and parsed true S matrix from student_files/119008041.txt
+2025-05-06 15:49:58,046 - __main__ - INFO - Successfully saved solver inputs to solver_inputs/solver_inputs_119008041.pkl
+2025-05-06 15:49:58,046 - Solver - INFO - Attempting to load solver data from: solver_inputs/solver_inputs_119008041.pkl
+2025-05-06 15:49:58,047 - Solver - INFO - Successfully loaded data for UID: 119008041
+2025-05-06 15:49:58,047 - Solver - INFO - Initializing KEM to generate Matrix A...
+2025-05-06 15:49:58,047 - Solver - INFO - KEM Params: q=32768, n=640, nbar=8, Mod_Approx=8192
+2025-05-06 15:49:58,048 - Solver - INFO - Generating matrix A (this might take a moment)...
+2025-05-06 15:49:58,160 - Solver - INFO - Matrix A generated ((640, 640))
+2025-05-06 15:49:58,161 - Solver - INFO - Matrix B loaded ((640, 8))
+2025-05-06 15:49:58,161 - Solver - INFO - Constructing S_known matrix from approximations...
+2025-05-06 15:49:58,166 - Solver - INFO - S_known_matrix (mod 8192) constructed. Processed: 5120, Missing: 0.
+2025-05-06 15:49:58,166 - Solver - INFO - Comparing constructed S_known with loaded S_true...
+2025-05-06 15:49:58,168 - Solver - INFO -   SUCCESS: S_known matches S_true (centered mod 8192) for all 5120 entries!
+2025-05-06 15:49:58,171 - Solver - INFO - Attempting to solve 8 columns using 8 workers.
+2025-05-06 15:49:58,171 - Solver - INFO - BKZ Parameters: Block Size = 80, Float Type = mp
+2025-05-06 15:49:58,171 - Solver - INFO - Starting parallel lattice reduction...
+2025-05-06 15:49:58,200 - Solver - INFO - [Worker 0] Starting...
+2025-05-06 15:49:58,206 - Solver - INFO - [Worker 0] Constructing basis matrix (641x641)...
+2025-05-06 15:49:58,208 - Solver - INFO - [Worker 1] Starting...
+2025-05-06 15:49:58,214 - Solver - INFO - [Worker 1] Constructing basis matrix (641x641)...
+2025-05-06 15:49:58,217 - Solver - INFO - [Worker 2] Starting...
+2025-05-06 15:49:58,223 - Solver - INFO - [Worker 2] Constructing basis matrix (641x641)...
+2025-05-06 15:49:58,226 - Solver - INFO - [Worker 3] Starting...
+2025-05-06 15:49:58,232 - Solver - INFO - [Worker 3] Constructing basis matrix (641x641)...
+2025-05-06 15:49:58,234 - Solver - INFO - [Worker 4] Starting...
+2025-05-06 15:49:58,240 - Solver - INFO - [Worker 4] Constructing basis matrix (641x641)...
+2025-05-06 15:49:58,243 - Solver - INFO - [Worker 5] Starting...
+2025-05-06 15:49:58,249 - Solver - INFO - [Worker 5] Constructing basis matrix (641x641)...
+2025-05-06 15:49:58,251 - Solver - INFO - [Worker 6] Starting...
+2025-05-06 15:49:58,257 - Solver - INFO - [Worker 6] Constructing basis matrix (641x641)...
+2025-05-06 15:49:58,260 - Solver - INFO - [Worker 7] Starting...
+2025-05-06 15:49:58,266 - Solver - INFO - [Worker 7] Constructing basis matrix (641x641)...
+2025-05-06 15:49:58,341 - Solver - INFO - [Worker 0] Basis matrix created.
+2025-05-06 15:49:58,341 - Solver - INFO - [Worker 0] Starting BKZ reduction (block size 80)...
+2025-05-06 15:49:58,349 - Solver - INFO - [Worker 1] Basis matrix created.
+2025-05-06 15:49:58,349 - Solver - INFO - [Worker 1] Starting BKZ reduction (block size 80)...
+2025-05-06 15:49:58,358 - Solver - INFO - [Worker 2] Basis matrix created.
+2025-05-06 15:49:58,358 - Solver - INFO - [Worker 2] Starting BKZ reduction (block size 80)...
+2025-05-06 15:49:58,366 - Solver - INFO - [Worker 3] Basis matrix created.
+2025-05-06 15:49:58,367 - Solver - INFO - [Worker 3] Starting BKZ reduction (block size 80)...
+2025-05-06 15:49:58,375 - Solver - INFO - [Worker 4] Basis matrix created.
+2025-05-06 15:49:58,376 - Solver - INFO - [Worker 4] Starting BKZ reduction (block size 80)...
+2025-05-06 15:49:58,384 - Solver - INFO - [Worker 5] Basis matrix created.
+2025-05-06 15:49:58,384 - Solver - INFO - [Worker 5] Starting BKZ reduction (block size 80)...
+2025-05-06 15:49:58,392 - Solver - INFO - [Worker 6] Basis matrix created.
+2025-05-06 15:49:58,392 - Solver - INFO - [Worker 6] Starting BKZ reduction (block size 80)...
+2025-05-06 15:49:58,400 - Solver - INFO - [Worker 7] Basis matrix created.
+2025-05-06 15:49:58,400 - Solver - INFO - [Worker 7] Starting BKZ reduction (block size 80)...
+2025-05-06 15:50:11,639 - Solver - INFO - [Worker 1] BKZ reduction finished in 13.29s.
+2025-05-06 15:50:11,639 - Solver - INFO - [Worker 1] Analyzing ALL 641 vectors of reduced basis...
+2025-05-06 15:50:11,640 - Solver - INFO - [Worker 1] Found candidate vector 4 with last coord -1 (non-zero s part).
+2025-05-06 15:50:11,641 - Solver - INFO - [Worker 1] Candidate 4 check: Max absolute error = 9
+2025-05-06 15:50:11,641 - Solver - INFO - [Worker 1] Candidate vector 4 verified (threshold q/8). Solution found.
+2025-05-06 15:50:11,653 - Solver - INFO - Successfully processed column 1.
+2025-05-06 15:50:11,677 - Solver - INFO - [Worker 0] BKZ reduction finished in 13.34s.
+2025-05-06 15:50:11,677 - Solver - INFO - [Worker 0] Analyzing ALL 641 vectors of reduced basis...
+2025-05-06 15:50:11,678 - Solver - INFO - [Worker 0] Found candidate vector 6 with last coord -1 (non-zero s part).
+2025-05-06 15:50:11,678 - Solver - INFO - [Worker 0] Candidate 6 check: Max absolute error = 8
+2025-05-06 15:50:11,679 - Solver - INFO - [Worker 0] Candidate vector 6 verified (threshold q/8). Solution found.
+2025-05-06 15:50:11,691 - Solver - INFO - Successfully processed column 0.
+2025-05-06 15:50:11,709 - Solver - INFO - [Worker 2] BKZ reduction finished in 13.35s.
+2025-05-06 15:50:11,709 - Solver - INFO - [Worker 2] Analyzing ALL 641 vectors of reduced basis...
+2025-05-06 15:50:11,710 - Solver - INFO - [Worker 2] Found candidate vector 1 with last coord -1 (non-zero s part).
+2025-05-06 15:50:11,710 - Solver - INFO - [Worker 2] Candidate 1 check: Max absolute error = 8
+2025-05-06 15:50:11,710 - Solver - INFO - [Worker 2] Candidate vector 1 verified (threshold q/8). Solution found.
+2025-05-06 15:50:11,722 - Solver - INFO - Successfully processed column 2.
+2025-05-06 15:50:11,733 - Solver - INFO - [Worker 5] BKZ reduction finished in 13.35s.
+2025-05-06 15:50:11,733 - Solver - INFO - [Worker 5] Analyzing ALL 641 vectors of reduced basis...
+2025-05-06 15:50:11,733 - Solver - INFO - [Worker 5] Found candidate vector 1 with last coord -1 (non-zero s part).
+2025-05-06 15:50:11,734 - Solver - INFO - [Worker 5] Candidate 1 check: Max absolute error = 9
+2025-05-06 15:50:11,734 - Solver - INFO - [Worker 5] Candidate vector 1 verified (threshold q/8). Solution found.
+2025-05-06 15:50:11,746 - Solver - INFO - Successfully processed column 5.
+2025-05-06 15:50:11,816 - Solver - INFO - [Worker 6] BKZ reduction finished in 13.42s.
+2025-05-06 15:50:11,816 - Solver - INFO - [Worker 6] Analyzing ALL 641 vectors of reduced basis...
+2025-05-06 15:50:11,819 - Solver - INFO - [Worker 6] Found candidate vector 16 with last coord 1 (non-zero s part).
+2025-05-06 15:50:11,819 - Solver - INFO - [Worker 6] Candidate 16 check: Max absolute error = 9
+2025-05-06 15:50:11,819 - Solver - INFO - [Worker 6] Candidate vector 16 verified (threshold q/8). Solution found.
+2025-05-06 15:50:11,831 - Solver - INFO - Successfully processed column 6.
+2025-05-06 15:50:11,862 - Solver - INFO - [Worker 3] BKZ reduction finished in 13.50s.
+2025-05-06 15:50:11,862 - Solver - INFO - [Worker 3] Analyzing ALL 641 vectors of reduced basis...
+2025-05-06 15:50:11,863 - Solver - INFO - [Worker 3] Found candidate vector 4 with last coord 1 (non-zero s part).
+2025-05-06 15:50:11,864 - Solver - INFO - [Worker 3] Candidate 4 check: Max absolute error = 9
+2025-05-06 15:50:11,864 - Solver - INFO - [Worker 3] Candidate vector 4 verified (threshold q/8). Solution found.
+2025-05-06 15:50:11,876 - Solver - INFO - Successfully processed column 3.
+2025-05-06 15:50:11,928 - Solver - INFO - [Worker 7] BKZ reduction finished in 13.53s.
+2025-05-06 15:50:11,928 - Solver - INFO - [Worker 7] Analyzing ALL 641 vectors of reduced basis...
+2025-05-06 15:50:11,929 - Solver - INFO - [Worker 7] Found candidate vector 2 with last coord 1 (non-zero s part).
+2025-05-06 15:50:11,929 - Solver - INFO - [Worker 7] Candidate 2 check: Max absolute error = 10
+2025-05-06 15:50:11,929 - Solver - INFO - [Worker 7] Candidate vector 2 verified (threshold q/8). Solution found.
+2025-05-06 15:50:11,941 - Solver - INFO - Successfully processed column 7.
+2025-05-06 15:50:11,974 - Solver - INFO - [Worker 4] BKZ reduction finished in 13.60s.
+2025-05-06 15:50:11,974 - Solver - INFO - [Worker 4] Analyzing ALL 641 vectors of reduced basis...
+2025-05-06 15:50:11,975 - Solver - INFO - [Worker 4] Found candidate vector 1 with last coord 1 (non-zero s part).
+2025-05-06 15:50:11,975 - Solver - INFO - [Worker 4] Candidate 1 check: Max absolute error = 9
+2025-05-06 15:50:11,975 - Solver - INFO - [Worker 4] Candidate vector 1 verified (threshold q/8). Solution found.
+2025-05-06 15:50:11,987 - Solver - INFO - Successfully processed column 4.
+2025-05-06 15:50:12,014 - Solver - INFO - Initial parallel solving finished in 13.84s.
+2025-05-06 15:50:12,014 - Solver - INFO - All columns successfully processed (potentially after retries).
+2025-05-06 15:50:12,014 - Solver - INFO - Reconstructing final S matrix (using s_unknown from worker)...
+2025-05-06 15:50:12,014 - Solver - INFO - Reconstructed column 0.
+2025-05-06 15:50:12,015 - Solver - INFO - Reconstructed column 1.
+2025-05-06 15:50:12,015 - Solver - INFO - Reconstructed column 2.
+2025-05-06 15:50:12,015 - Solver - INFO - Reconstructed column 3.
+2025-05-06 15:50:12,015 - Solver - INFO - Reconstructed column 4.
+2025-05-06 15:50:12,016 - Solver - INFO - Reconstructed column 5.
+2025-05-06 15:50:12,016 - Solver - INFO - Reconstructed column 6.
+2025-05-06 15:50:12,016 - Solver - INFO - Reconstructed column 7.
+2025-05-06 15:50:12,016 - Solver - INFO - Successfully reconstructed all attempted columns of S.
+2025-05-06 15:50:12,016 - Solver - INFO - Performing final verification: Check if || B - AS || is small...
+2025-05-06 15:50:12,019 - Solver - INFO - Verification Check: Max Abs Error = 10, Mean Abs Error = 2.23
+2025-05-06 15:50:12,019 - Solver - INFO - Recovered error matrix E seems small, S is likely correct.
+2025-05-06 15:50:12,020 - Solver - INFO - Saved recovered S matrix (shape (640, 8)) to recovered_S_119008041.npy
+2025-05-06 15:50:12,020 - Solver - INFO - Solver script finished.
+2025-05-06 15:50:12,021 - __main__ - INFO - Attempting to verify recovery via server's third interface (checking pkh)...
+2025-05-06 15:50:12,023 - __main__ - INFO - Built secret-key guess hex length 20512
+2025-05-06 15:50:12,023 - __main__ - INFO - Calling third interface with secret-key guess…
+2025-05-06 15:50:12,049 - __main__ - INFO - [92mSUCCESS: Found success message in third interface output.[0m
+
+Recovered S matrix (first 5 rows, 8 columns):
+[[-1 -5  1  0 -4  1 -5  1]
+ [ 6 -3  1  6  1  3  3  0]
+ [ 2 -1 -2 -2 -2  0 -3  1]
+ [-2 -4  1 -1 -5 -2  0 -1]
+ [ 1 -1 -3 -3  2  1 -3 -3]]

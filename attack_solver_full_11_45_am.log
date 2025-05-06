@@ -1,0 +1,71 @@
+2025-05-02 15:48:17,563 - INFO - Setting up server for UID: 119008041, Deterministic: False
+2025-05-02 15:48:17,563 - WARNING - Salt length mismatch. Provided: 128 hex chars, KEM expects: 32. Adjusting.
+2025-05-02 15:48:18,264 - INFO - Received Public Key (PK): A72CACF972...2A5BC84043
+2025-05-02 15:48:18,339 - INFO - Parsed seedA and unpacked b into matrix B (640x8)
+2025-05-02 15:48:18,339 - INFO - Starting recovery using 32 workers... Salt length: 32
+2025-05-02 15:48:18,339 - INFO - Targeting entries up to k=639, l=7
+Server is up and running!
+Key pair generated and stored
+2025-05-02 15:48:47,788 - INFO - Progress: 256/5120 (5.0%). Rate: 8.69 entries/s. ETA: 559.5s
+2025-05-02 15:48:47,788 - INFO -   Recovered S[31][7] ≈ 4097 (mod 8192)
+2025-05-02 15:49:17,464 - INFO - Progress: 512/5120 (10.0%). Rate: 8.66 entries/s. ETA: 532.1s
+2025-05-02 15:49:17,464 - INFO -   Recovered S[63][7] ≈ 4098 (mod 8192)
+2025-05-02 15:49:47,310 - INFO - Progress: 768/5120 (15.0%). Rate: 8.63 entries/s. ETA: 504.2s
+2025-05-02 15:49:47,311 - INFO -   Recovered S[95][7] ≈ 4096 (mod 8192)
+2025-05-02 15:50:17,446 - INFO - Progress: 1024/5120 (20.0%). Rate: 8.60 entries/s. ETA: 476.4s
+2025-05-02 15:50:17,446 - INFO -   Recovered S[127][7] ≈ 4099 (mod 8192)
+2025-05-02 15:50:47,493 - INFO - Progress: 1280/5120 (25.0%). Rate: 8.58 entries/s. ETA: 447.5s
+2025-05-02 15:50:47,494 - INFO -   Recovered S[159][7] ≈ 4093 (mod 8192)
+2025-05-02 15:51:18,171 - INFO - Progress: 1536/5120 (30.0%). Rate: 8.54 entries/s. ETA: 419.6s
+2025-05-02 15:51:18,171 - INFO -   Recovered S[191][7] ≈ 4098 (mod 8192)
+2025-05-02 15:51:49,123 - INFO - Progress: 1792/5120 (35.0%). Rate: 8.50 entries/s. ETA: 391.5s
+2025-05-02 15:51:49,123 - INFO -   Recovered S[223][7] ≈ 4094 (mod 8192)
+2025-05-02 15:52:20,456 - INFO - Progress: 2048/5120 (40.0%). Rate: 8.46 entries/s. ETA: 363.2s
+2025-05-02 15:52:20,456 - INFO -   Recovered S[255][7] ≈ 4092 (mod 8192)
+2025-05-02 15:52:52,242 - INFO - Progress: 2304/5120 (45.0%). Rate: 8.41 entries/s. ETA: 334.8s
+2025-05-02 15:52:52,242 - INFO -   Recovered S[287][7] ≈ 4093 (mod 8192)
+2025-05-02 15:53:24,275 - INFO - Progress: 2560/5120 (50.0%). Rate: 8.37 entries/s. ETA: 305.9s
+2025-05-02 15:53:24,275 - INFO -   Recovered S[319][7] ≈ 4096 (mod 8192)
+2025-05-02 15:53:56,936 - INFO - Progress: 2816/5120 (55.0%). Rate: 8.32 entries/s. ETA: 277.0s
+2025-05-02 15:53:56,936 - INFO -   Recovered S[351][7] ≈ 4093 (mod 8192)
+2025-05-02 15:54:29,788 - INFO - Progress: 3072/5120 (60.0%). Rate: 8.27 entries/s. ETA: 247.6s
+2025-05-02 15:54:29,790 - INFO -   Recovered S[383][7] ≈ 4098 (mod 8192)
+2025-05-02 15:55:03,370 - INFO - Progress: 3328/5120 (65.0%). Rate: 8.22 entries/s. ETA: 218.1s
+2025-05-02 15:55:03,370 - INFO -   Recovered S[415][7] ≈ 4091 (mod 8192)
+2025-05-02 15:55:37,144 - INFO - Progress: 3584/5120 (70.0%). Rate: 8.17 entries/s. ETA: 188.1s
+2025-05-02 15:55:37,144 - INFO -   Recovered S[447][7] ≈ 4094 (mod 8192)
+2025-05-02 15:56:11,009 - INFO - Progress: 3840/5120 (75.0%). Rate: 8.12 entries/s. ETA: 157.6s
+2025-05-02 15:56:11,012 - INFO -   Recovered S[479][7] ≈ 4102 (mod 8192)
+2025-05-02 15:56:45,957 - INFO - Progress: 4096/5120 (80.0%). Rate: 8.07 entries/s. ETA: 126.9s
+2025-05-02 15:56:45,958 - INFO -   Recovered S[511][7] ≈ 4093 (mod 8192)
+2025-05-02 15:57:21,072 - INFO - Progress: 4352/5120 (85.0%). Rate: 8.02 entries/s. ETA: 95.8s
+2025-05-02 15:57:21,072 - INFO -   Recovered S[543][7] ≈ 4098 (mod 8192)
+2025-05-02 15:57:56,581 - INFO - Progress: 4608/5120 (90.0%). Rate: 7.97 entries/s. ETA: 64.2s
+2025-05-02 15:57:56,581 - INFO -   Recovered S[575][7] ≈ 4096 (mod 8192)
+2025-05-02 15:58:32,263 - INFO - Progress: 4864/5120 (95.0%). Rate: 7.92 entries/s. ETA: 32.3s
+2025-05-02 15:58:32,263 - INFO -   Recovered S[607][7] ≈ 4096 (mod 8192)
+2025-05-02 15:59:07,096 - INFO - Progress: 5120/5120 (100.0%). Rate: 7.89 entries/s. ETA: 0.0s
+2025-05-02 15:59:07,096 - INFO -   Recovered S[639][7] ≈ 4101 (mod 8192)
+2025-05-02 15:59:07,171 - INFO - Finished gathering 5120/5120 approximations in 648.83s
+2025-05-02 15:59:07,172 - INFO - --- Entering solve_system_from_approximations (PLACEHOLDER - SAVING INPUTS) ---
+2025-05-02 15:59:07,172 - INFO -   UID: 119008041
+2025-05-02 15:59:07,172 - INFO -   KEM Variant: FrodoKEM-640-SHAKE
+2025-05-02 15:59:07,172 - INFO -   seedA length: 16 bytes
+2025-05-02 15:59:07,172 - INFO -   B_matrix dimensions: 640x8
+2025-05-02 15:59:07,172 - INFO -   Number of approximations received: 5120
+2025-05-02 15:59:07,172 - INFO - Ensured solver input directory exists: solver_inputs/
+2025-05-02 15:59:07,173 - INFO - Successfully saved solver inputs to solver_inputs/solver_inputs_119008041.pkl
+2025-05-02 15:59:07,173 - WARNING - Solve step skipped in attack_solver.py. Run solve_system_testing.py separately.
+2025-05-02 15:59:07,173 - WARNING - --- Exiting solve_system_from_approximations (PLACEHOLDER) ---
+2025-05-02 15:59:07,173 - INFO - Attempting to verify recovered S matrix...
+2025-05-02 15:59:07,174 - INFO - Calculated pkh: B36B2E2CB21C034C7CDF32363E5806A3
+<truncated>
+2025-05-02 15:59:07,322 - WARNING - Value S^T[7][639] = -999 out of uint16 range during packing. Clamping or error? Using modulo for now.
+2025-05-02 15:59:07,322 - INFO - Successfully reconstructed secret key bytes structure.
+2025-05-02 15:59:07,322 - INFO - Performing standard encapsulation to get a test ct/ss pair...
+2025-05-02 15:59:08,064 - INFO - Standard encapsulation successful.
+2025-05-02 15:59:08,064 - INFO - Performing decapsulation with the RECOVERED secret key...
+2025-05-02 15:59:08,183 - INFO - Decapsulation with recovered key successful.
+2025-05-02 15:59:08,183 - ERROR - FAILURE: Decapsulated shared secret does NOT match original.
+2025-05-02 15:59:08,183 - ERROR -   Original ss: 8712B00AC7263467197D9AD3E15299C4
+2025-05-02 15:59:08,183 - ERROR -   Recovered ss: B6A5350A59A4059924BB6659F670B200

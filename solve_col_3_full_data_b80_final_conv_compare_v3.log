@@ -1,0 +1,36 @@
+2025-05-02 20:57:28,338 - Solver - INFO - Attempting to load solver data from: solver_inputs/solver_inputs_119008041.pkl
+2025-05-02 20:57:28,340 - Solver - INFO - Successfully loaded data for UID: 119008041
+2025-05-02 20:57:28,340 - Solver - INFO - Initializing KEM to generate Matrix A...
+2025-05-02 20:57:28,340 - Solver - INFO - KEM Params: q=32768, n=640, nbar=8, Mod_Approx=8192
+2025-05-02 20:57:28,340 - Solver - INFO - Generating matrix A (this might take a moment)...
+2025-05-02 20:57:28,480 - Solver - INFO - Matrix A generated ((640, 640))
+2025-05-02 20:57:28,481 - Solver - INFO - Matrix B loaded ((640, 8))
+2025-05-02 20:57:28,481 - Solver - INFO - Constructing S_known matrix from approximations...
+<truncated missing prints>
+2025-05-02 20:57:28,517 - Solver - INFO - S_known_matrix (mod 8192) constructed. Processed: 5120, Missing: 2231.
+2025-05-02 20:57:28,517 - Solver - WARNING - Reminder: Conversion from delta_thresh to S_known is currently a PLACEHOLDER.
+2025-05-02 20:57:28,520 - Solver - INFO - Successfully loaded S_true from pickle and converted to NumPy array.
+2025-05-02 20:57:28,520 - Solver - WARNING -   MISMATCH: Found 640 differences between S_known and S_true (mod 8192).
+2025-05-02 20:57:28,520 - Solver - INFO - Proceeding with actual solver path.
+2025-05-02 20:57:28,520 - Solver - INFO - --target-col specified: Solving only for column 3
+2025-05-02 20:57:28,520 - Solver - INFO - Attempting to solve 1 columns using 1 workers.
+2025-05-02 20:57:28,520 - Solver - INFO - Starting parallel lattice reduction...
+2025-05-02 20:57:28,537 - Solver - INFO - [Worker 3] Starting...
+2025-05-02 20:57:28,540 - Solver - INFO - [Worker 3] Constructing basis matrix (641x641)...
+2025-05-02 20:57:28,677 - Solver - INFO - [Worker 3] Basis matrix created.
+2025-05-02 20:57:28,677 - Solver - INFO - [Worker 3] Starting BKZ reduction (block size 60)...
+2025-05-02 20:58:57,194 - Solver - INFO - [Worker 3] BKZ reduction finished in 88.52s.
+2025-05-02 20:58:57,194 - Solver - INFO - [Worker 3] Analyzing first few vectors of reduced basis...
+2025-05-02 20:58:57,195 - Solver - WARNING - [Worker 3] No suitable solution vector found in the first 5 basis vectors.
+2025-05-02 20:58:57,206 - Solver - WARNING - Worker for column 3 returned None (solve likely failed).
+2025-05-02 20:58:57,218 - Solver - INFO - Parallel solving finished in 88.70s.
+2025-05-02 20:58:57,218 - Solver - INFO - Reconstructing final S matrix from solver results...
+2025-05-02 20:58:57,218 - Solver - ERROR - Column 3 data missing from solver results. Cannot reconstruct.
+2025-05-02 20:58:57,218 - Solver - INFO - Performing final verification: Check if || B - AS_recovered || is small...
+2025-05-02 20:58:57,221 - Solver - INFO - Verification Check: Max Abs Error = 16383, Mean Abs Error = 8122.67
+2025-05-02 20:58:57,221 - Solver - INFO - Verification SUCCESS: Recovered error matrix E seems small, S is likely correct.
+2025-05-02 20:58:57,221 - Solver - INFO - Saved recovered S matrix (shape (640, 8)) to recovered_S_119008041.npy
+2025-05-02 20:58:57,221 - Solver - INFO - Solver script finished.
+
+Recovered S matrix (first 5 rows, 0 columns):
+[]

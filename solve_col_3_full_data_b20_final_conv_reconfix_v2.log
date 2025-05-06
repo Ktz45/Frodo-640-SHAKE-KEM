@@ -1,0 +1,47 @@
+2025-05-02 22:31:55,980 - Solver - INFO - Attempting to load solver data from: solver_inputs/solver_inputs_119008041.pkl
+2025-05-02 22:31:55,981 - Solver - INFO - Successfully loaded data for UID: 119008041
+2025-05-02 22:31:55,982 - Solver - INFO - Initializing KEM to generate Matrix A...
+2025-05-02 22:31:55,982 - Solver - INFO - KEM Params: q=32768, n=640, nbar=8, Mod_Approx=8192
+2025-05-02 22:31:55,982 - Solver - INFO - Generating matrix A (this might take a moment)...
+2025-05-02 22:31:56,125 - Solver - INFO - Matrix A generated ((640, 640))
+2025-05-02 22:31:56,125 - Solver - INFO - Matrix B loaded ((640, 8))
+2025-05-02 22:31:56,125 - Solver - INFO - Constructing S_known matrix from approximations...
+2025-05-02 22:31:56,130 - Solver - INFO - S_known_matrix (mod 8192) constructed. Processed: 5120, Missing: 0.
+2025-05-02 22:31:56,133 - Solver - INFO -   SUCCESS: S_known column matches S_true column (mod 8192)!
+2025-05-02 22:31:56,133 - Solver - INFO - --- Single Column Mode: Targeting column j=3 ---
+2025-05-02 22:31:56,133 - Solver - INFO - Attempting to solve 1 columns using 1 workers.
+2025-05-02 22:31:56,133 - Solver - INFO - BKZ Parameters: Block Size = 20, Float Type = mp
+2025-05-02 22:31:56,133 - Solver - INFO - Preparing task for column 3
+2025-05-02 22:31:56,133 - Solver - INFO - Starting parallel lattice reduction...
+2025-05-02 22:31:56,150 - Solver - INFO - [Worker 3] Starting...
+2025-05-02 22:31:56,155 - Solver - INFO - [Worker 3] Constructing basis matrix (641x641)...
+2025-05-02 22:31:56,288 - Solver - INFO - [Worker 3] Basis matrix created.
+2025-05-02 22:31:56,288 - Solver - INFO - [Worker 3] Starting BKZ reduction (block size 20)...
+2025-05-02 22:33:23,728 - Solver - INFO - [Worker 3] BKZ reduction finished in 87.44s.
+2025-05-02 22:33:23,729 - Solver - INFO - [Worker 3] Analyzing first few vectors of reduced basis...
+2025-05-02 22:33:23,729 - Solver - INFO - [Worker 3] Found candidate vector 2 with last coord -1 (non-zero s part).
+2025-05-02 22:33:23,730 - Solver - INFO - [Worker 3] Candidate 2 check: Max absolute error = 9
+2025-05-02 22:33:23,730 - Solver - INFO - [Worker 3] Candidate vector 2 verified (error seems small). Solution found.
+2025-05-02 22:33:23,741 - Solver - INFO - Successfully processed column 3.
+2025-05-02 22:33:23,753 - Solver - INFO - Parallel solving finished in 87.62s.
+2025-05-02 22:33:23,753 - Solver - INFO - Reconstructing final S matrix...
+2025-05-02 22:33:23,753 - Solver - INFO - Reconstructed column 3.
+2025-05-02 22:33:23,753 - Solver - INFO - Successfully reconstructed all attempted columns of S.
+2025-05-02 22:33:23,753 - Solver - INFO - Performing final verification: Check if || B - AS || is small...
+2025-05-02 22:33:23,754 - Solver - INFO - Verification Check: Max Abs Error = 16369, Mean Abs Error = 8230.97
+2025-05-02 22:33:23,754 - Solver - INFO - Verification SUCCESS: Recovered error matrix E seems small, S is likely correct.
+2025-05-02 22:33:23,754 - Solver - INFO - --- Verifying recovered single column j=3 ---
+2025-05-02 22:33:23,754 - Solver - INFO - Single Column Verification (j=3):
+2025-05-02 22:33:23,754 - Solver - INFO -   Max Abs Error = 9
+2025-05-02 22:33:23,755 - Solver - INFO -   Mean Abs Error = 2.03
+2025-05-02 22:33:23,755 - Solver - INFO -   Std Dev Abs Error = 1.69
+2025-05-02 22:33:23,755 - Solver - INFO - Verification SUCCESS (j=3): Recovered error seems small (Max Abs Error < 2048).
+2025-05-02 22:33:23,755 - Solver - INFO - Saved recovered S matrix (shape (640, 8)) to recovered_S_119008041.npy
+2025-05-02 22:33:23,755 - Solver - INFO - Solver script finished.
+
+Recovered S matrix (first 5 rows, 1 columns):
+[[-999]
+ [-999]
+ [-999]
+ [-999]
+ [-999]]

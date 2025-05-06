@@ -1,0 +1,66 @@
+2025-05-06 02:07:07,313 - __main__ - INFO - Setting up server for UID: 119008041, Deterministic: False
+2025-05-06 02:07:08,012 - __main__ - INFO - Received Public Key (PK): B7617877A6...6FB6916712
+2025-05-06 02:07:08,086 - __main__ - INFO - Parsed seedA and unpacked b into matrix B (640x8)
+2025-05-06 02:07:08,087 - __main__ - INFO - Starting recovery using 32 workers... Salt length: 32
+2025-05-06 02:07:08,087 - __main__ - INFO - Targeting entries up to k=639, l=7
+Server is up and running!
+Key pair generated and stored
+2025-05-06 02:07:36,382 - __main__ - INFO - Progress: 256/5120 (5.0%). Rate: 9.05 entries/s. ETA: 537.6s
+2025-05-06 02:07:36,383 - __main__ - INFO -   Recovered S[31][7] ≈ 4095 (mod 8192)
+2025-05-06 02:08:04,365 - __main__ - INFO - Progress: 512/5120 (10.0%). Rate: 9.10 entries/s. ETA: 506.5s
+2025-05-06 02:08:04,365 - __main__ - INFO -   Recovered S[63][7] ≈ 4097 (mod 8192)
+2025-05-06 02:08:32,682 - __main__ - INFO - Progress: 768/5120 (15.0%). Rate: 9.08 entries/s. ETA: 479.4s
+2025-05-06 02:08:32,682 - __main__ - INFO -   Recovered S[95][7] ≈ 4098 (mod 8192)
+2025-05-06 02:09:01,009 - __main__ - INFO - Progress: 1024/5120 (20.0%). Rate: 9.07 entries/s. ETA: 451.7s
+2025-05-06 02:09:01,010 - __main__ - INFO -   Recovered S[127][7] ≈ 4095 (mod 8192)
+2025-05-06 02:09:29,914 - __main__ - INFO - Progress: 1280/5120 (25.0%). Rate: 9.03 entries/s. ETA: 425.5s
+2025-05-06 02:09:29,914 - __main__ - INFO -   Recovered S[159][7] ≈ 4096 (mod 8192)
+2025-05-06 02:09:58,762 - __main__ - INFO - Progress: 1536/5120 (30.0%). Rate: 9.00 entries/s. ETA: 398.2s
+2025-05-06 02:09:58,762 - __main__ - INFO -   Recovered S[191][7] ≈ 4094 (mod 8192)
+2025-05-06 02:10:27,949 - __main__ - INFO - Progress: 1792/5120 (35.0%). Rate: 8.97 entries/s. ETA: 371.2s
+2025-05-06 02:10:27,949 - __main__ - INFO -   Recovered S[223][7] ≈ 4094 (mod 8192)
+2025-05-06 02:10:57,503 - __main__ - INFO - Progress: 2048/5120 (40.0%). Rate: 8.93 entries/s. ETA: 344.1s
+2025-05-06 02:10:57,504 - __main__ - INFO -   Recovered S[255][7] ≈ 4092 (mod 8192)
+2025-05-06 02:11:27,280 - __main__ - INFO - Progress: 2304/5120 (45.0%). Rate: 8.89 entries/s. ETA: 316.8s
+2025-05-06 02:11:27,280 - __main__ - INFO -   Recovered S[287][7] ≈ 4097 (mod 8192)
+2025-05-06 02:11:57,983 - __main__ - INFO - Progress: 2560/5120 (50.0%). Rate: 8.83 entries/s. ETA: 289.9s
+2025-05-06 02:11:57,983 - __main__ - INFO -   Recovered S[319][7] ≈ 4093 (mod 8192)
+2025-05-06 02:12:28,612 - __main__ - INFO - Progress: 2816/5120 (55.0%). Rate: 8.79 entries/s. ETA: 262.2s
+2025-05-06 02:12:28,612 - __main__ - INFO -   Recovered S[351][7] ≈ 4096 (mod 8192)
+2025-05-06 02:12:59,330 - __main__ - INFO - Progress: 3072/5120 (60.0%). Rate: 8.75 entries/s. ETA: 234.2s
+2025-05-06 02:12:59,330 - __main__ - INFO -   Recovered S[383][7] ≈ 4101 (mod 8192)
+2025-05-06 02:13:30,753 - __main__ - INFO - Progress: 3328/5120 (65.0%). Rate: 8.70 entries/s. ETA: 206.1s
+2025-05-06 02:13:30,753 - __main__ - INFO -   Recovered S[415][7] ≈ 4093 (mod 8192)
+2025-05-06 02:14:02,736 - __main__ - INFO - Progress: 3584/5120 (70.0%). Rate: 8.64 entries/s. ETA: 177.7s
+2025-05-06 02:14:02,736 - __main__ - INFO -   Recovered S[447][7] ≈ 4093 (mod 8192)
+2025-05-06 02:14:34,893 - __main__ - INFO - Progress: 3840/5120 (75.0%). Rate: 8.59 entries/s. ETA: 148.9s
+2025-05-06 02:14:34,893 - __main__ - INFO -   Recovered S[479][7] ≈ 4098 (mod 8192)
+2025-05-06 02:15:07,614 - __main__ - INFO - Progress: 4096/5120 (80.0%). Rate: 8.54 entries/s. ETA: 119.9s
+2025-05-06 02:15:07,614 - __main__ - INFO -   Recovered S[511][7] ≈ 4098 (mod 8192)
+2025-05-06 02:15:40,174 - __main__ - INFO - Progress: 4352/5120 (85.0%). Rate: 8.50 entries/s. ETA: 90.4s
+2025-05-06 02:15:40,175 - __main__ - INFO -   Recovered S[543][7] ≈ 4098 (mod 8192)
+2025-05-06 02:16:13,745 - __main__ - INFO - Progress: 4608/5120 (90.0%). Rate: 8.44 entries/s. ETA: 60.6s
+2025-05-06 02:16:13,745 - __main__ - INFO -   Recovered S[575][7] ≈ 4093 (mod 8192)
+2025-05-06 02:16:47,687 - __main__ - INFO - Progress: 4864/5120 (95.0%). Rate: 8.39 entries/s. ETA: 30.5s
+2025-05-06 02:16:47,689 - __main__ - INFO -   Recovered S[607][7] ≈ 4096 (mod 8192)
+2025-05-06 02:17:20,553 - __main__ - INFO - Progress: 5120/5120 (100.0%). Rate: 8.36 entries/s. ETA: 0.0s
+2025-05-06 02:17:20,553 - __main__ - INFO -   Recovered S[639][7] ≈ 4095 (mod 8192)
+2025-05-06 02:17:20,631 - __main__ - INFO - Finished gathering 5120/5120 approximations in 612.54s
+2025-05-06 02:17:20,632 - __main__ - INFO - --- Entering solve_system_from_approximations (PLACEHOLDER - SAVING INPUTS) ---
+2025-05-06 02:17:20,633 - __main__ - INFO -   UID: 119008041
+2025-05-06 02:17:20,633 - __main__ - INFO -   KEM Variant: FrodoKEM-640-SHAKE
+2025-05-06 02:17:20,633 - __main__ - INFO -   seedA length: 16 bytes
+2025-05-06 02:17:20,633 - __main__ - INFO -   B_matrix dimensions: 640x8
+2025-05-06 02:17:20,633 - __main__ - INFO -   Number of approximations received: 5120
+2025-05-06 02:17:20,633 - __main__ - INFO - Ensured solver input directory exists: solver_inputs/
+2025-05-06 02:17:20,633 - __main__ - INFO - Attempting to read true S from student file for debugging...
+2025-05-06 02:17:20,699 - __main__ - INFO - Successfully read and parsed true S matrix from student_files/119008041.txt
+2025-05-06 02:17:20,700 - __main__ - INFO - Successfully saved solver inputs to solver_inputs/solver_inputs_119008041.pkl
+usage: attack_solver.py [-h] [--cols COLS] [-w WORKERS]
+                        [--bkz-block-size BKZ_BLOCK_SIZE]
+                        [--bkz-float-type {d,dd,qd,mp}]
+                        [--log-level {DEBUG,INFO,WARNING,ERROR}]
+                        [--target-col TARGET_COL]
+                        [--max-retry-bkz-size MAX_RETRY_BKZ_SIZE]
+                        uid
+attack_solver.py: error: unrecognized arguments: -u

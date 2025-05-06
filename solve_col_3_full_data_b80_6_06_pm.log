@@ -1,0 +1,40 @@
+2025-05-02 22:06:11,373 - Solver - INFO - Attempting to load solver data from: solver_inputs/solver_inputs_119008041.pkl
+2025-05-02 22:06:11,375 - Solver - INFO - Successfully loaded data for UID: 119008041
+2025-05-02 22:06:11,375 - Solver - INFO - Initializing KEM to generate Matrix A...
+2025-05-02 22:06:11,375 - Solver - INFO - KEM Params: q=32768, n=640, nbar=8, Mod_Approx=8192
+2025-05-02 22:06:11,375 - Solver - INFO - Generating matrix A (this might take a moment)...
+2025-05-02 22:06:11,516 - Solver - INFO - Matrix A generated ((640, 640))
+2025-05-02 22:06:11,516 - Solver - INFO - Matrix B loaded ((640, 8))
+2025-05-02 22:06:11,516 - Solver - INFO - Constructing S_known matrix from approximations...
+2025-05-02 22:06:11,521 - Solver - INFO - S_known_matrix (mod 8192) constructed. Processed: 5120, Missing: 0.
+2025-05-02 22:06:11,521 - Solver - WARNING - Reminder: Conversion from delta_thresh to S_known is currently a PLACEHOLDER.
+2025-05-02 22:06:11,524 - Solver - INFO -   SUCCESS: S_known column matches S_true column (mod 8192)!
+2025-05-02 22:06:11,524 - Solver - INFO - --- Single Column Mode: Targeting column j=3 ---
+2025-05-02 22:06:11,524 - Solver - INFO - Attempting to solve 1 columns using 1 workers.
+2025-05-02 22:06:11,524 - Solver - INFO - BKZ Parameters: Block Size = 80, Float Type = mp
+2025-05-02 22:06:11,524 - Solver - INFO - Preparing task for column 3
+2025-05-02 22:06:11,524 - Solver - INFO - Starting parallel lattice reduction...
+2025-05-02 22:06:11,540 - Solver - INFO - [Worker 3] Starting...
+2025-05-02 22:06:11,543 - Solver - INFO - [Worker 3] Constructing basis matrix (641x641)...
+2025-05-02 22:06:11,681 - Solver - INFO - [Worker 3] Basis matrix created.
+2025-05-02 22:06:11,681 - Solver - INFO - [Worker 3] Starting BKZ reduction (block size 80)...
+2025-05-02 22:11:58,633 - Solver - INFO - [Worker 3] BKZ reduction finished in 346.95s.
+2025-05-02 22:11:58,634 - Solver - INFO - [Worker 3] Analyzing first few vectors of reduced basis...
+2025-05-02 22:11:58,634 - Solver - INFO - [Worker 3] Found candidate vector 3 with last coord -1 (non-zero s part).
+2025-05-02 22:11:58,635 - Solver - INFO - [Worker 3] Candidate 3 check: Max absolute error = 16355
+2025-05-02 22:11:58,635 - Solver - WARNING - [Worker 3] Candidate vector 3 failed verification (error too large: 16355).
+2025-05-02 22:11:58,635 - Solver - WARNING - [Worker 3] No suitable solution vector found in the first 5 basis vectors.
+2025-05-02 22:11:58,646 - Solver - ERROR - Failed to find solution for column 3.
+2025-05-02 22:11:58,658 - Solver - INFO - Parallel solving finished in 347.13s.
+2025-05-02 22:11:58,658 - Solver - INFO - Reconstructing final S matrix...
+2025-05-02 22:11:58,658 - Solver - ERROR - Column 3 data is missing. Final matrix will be incomplete.
+2025-05-02 22:11:58,658 - Solver - ERROR - Failed to recover all attempted columns of S. Cannot verify full matrix.
+2025-05-02 22:11:58,658 - Solver - INFO - Saved recovered S matrix (shape (640, 8)) to recovered_S_119008041.npy
+2025-05-02 22:11:58,659 - Solver - INFO - Solver script finished.
+
+Recovered S matrix (first 5 rows, 1 columns):
+[[-999]
+ [-999]
+ [-999]
+ [-999]
+ [-999]]

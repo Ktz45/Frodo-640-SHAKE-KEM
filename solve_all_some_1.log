@@ -1,0 +1,8 @@
+usage: solve_system_testing.py [-h] [--cols COLS] [-w WORKERS]
+                               [--bkz-block-size BKZ_BLOCK_SIZE]
+                               [--bkz-float-type {d,dd,qd,mp}]
+                               [--log-level {DEBUG,INFO,WARNING,ERROR}]
+                               [--target-col TARGET_COL]
+                               [--max-retry-bkz-size MAX_RETRY_BKZ_SIZE]
+                               uid
+solve_system_testing.py: error: unrecognized arguments: --retry-bkz-increment 20
