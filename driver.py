@@ -161,7 +161,6 @@ def recover_secret_parallel(server, variant, uid, seedA, b, rows=None, cols=None
                 pct = 100*done/total
                 print(f"Progress: {done}/{total} ({pct:.1f}%)")
     print(len(M), len(M[0]))
-    print(M)
 
     duration = time.time() - start
     print(f"Parallel recovery finished in {duration:.2f}s for {rows*cols} coeffs using {workers} threads")
