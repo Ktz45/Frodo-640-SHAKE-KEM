@@ -50,7 +50,7 @@ class RemoteServer():
                 result = response.json()
                 ss_d = result.get('new_cipher')
                 # aes_key = result.get('aes_key')
-                print("AES Encrypted Ciphertext returned.")
+                # print("AES Encrypted Ciphertext returned.")
                 # print(f"NEW CIPHER: {ss_d}")
                 # return ss_d, aes_key
                 return ss_d

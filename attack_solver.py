@@ -17,7 +17,6 @@ import bitstring
 
 # Assuming these modules are in the same directory or accessible via PYTHONPATH
 from frodokem import FrodoKEM
-# from local_server import RemoteServer
 import aes_cbc
 from matrices import matrix_add, matrix_mul, matrix_sub
 import solve_system_testing # Assuming matrix ops are needed later
@@ -25,7 +24,7 @@ import solve_system_testing # Assuming matrix ops are needed later
 # ==== Copied from driver.py ====
 from frodokem import FrodoKEM
 from remote_server import RemoteServer
-# from local_server import RemoteServer
+from local_server import LocalServer
 from matrices import MatrixSet, matrix_add, matrix_mul, matrix_sub
 from enum import Enum
 import aes_cbc
@@ -60,6 +59,8 @@ SALT_HEX = "0" * 64 # Correct length: 64 hex chars = 32 bytes
 # BYTES_SALT = bytes.fromhex(SALT_HEX)
 FIXED_AES_PLAINTEXT = b"\x01" * 16
 
+PROBLEM_SIZE = "full" # Either use the small or full problem size
+SERVER_MODE = 'local' # Weather to use the local or remote server
 
 BASE_URL: str = "http://sp25cmsc656.cs.umd.edu:5001/"
 TEST_URL = f'{BASE_URL}/check'
@@ -72,6 +73,7 @@ for _ in range(64):
     salt += "A"
 BYTES_SALT = bytes.fromhex(salt)
 
+ORACLE_PATH_FILENAME = os.path.join('.', f"oracle_cache.pkl")
 
 # --- Logging Setup ---
 # Configure logging level based on the constant
@@ -127,7 +129,15 @@ def setup_server_and_kem(uid: str, determ: bool) -> Tuple[RemoteServer, FrodoKEM
 # --- Oracle Interaction ---
 
 # Cache for oracle results to potentially speed up repeated queries
-oracle_cache: dict[str, str] = {}
+# Load the cache from the cache database which is UID agnostic because im an opportunist :)
+if os.path.getsize(ORACLE_PATH_FILENAME) == 0:
+    log.debug(f"No oracle cache found for UID {UID}")
+    oracle_cache: dict[str, str] = {}
+else:
+    with open(ORACLE_PATH_FILENAME, 'rb') as f:
+        # oracle_cache: dict[str, str] = {}
+        oracle_cache = pickle.load(f)
+        log.info(f"Successfully loaded oracle cache for UID {UID} with {len(oracle_cache)} cached ciphertexts.")
 
 def query_oracle(
     server: RemoteServer, 
@@ -138,8 +148,9 @@ def query_oracle(
 ) -> str:
     """
     Queries the server's second interface with packed c1 and c2.
-    Handles constructing the full ciphertext and caching.
-    Returns the AES ciphertext hex string.
+    Handles constructing the full ciphertext and most importantly
+    it caches the 2nd interface so we dont re-query the server
+    with mauled ct's we already saw.
     """
     # Determine which salt to use
     salt_to_use = BYTES_SALT
@@ -149,14 +160,18 @@ def query_oracle(
     assert len(c2_bytes) == kem.mbar * kem.nbar * kem.D // 8, f"Incorrect c2 length: {len(c2_bytes)}"
     assert len(salt_to_use) == kem.len_salt_bytes, f"Incorrect salt length: {len(salt_to_use)} vs expected {kem.len_salt_bytes}"
 
+    # c1_bytes = (000...[i,j=1]...000)
+    # c2_bytes = (000 ... 000)
+    # salt_to_use = (AAA ... AAA)
     full_ct_bytes = c1_bytes + c2_bytes + salt_to_use
     full_ct_hex = full_ct_bytes.hex().upper()
     assert len(full_ct_hex) == kem.len_ct_bytes * 2, f"Unexpected full CT hex length: {len(full_ct_hex)}"
 
-    # Check cache first
+    # Check to see if its in the cache first before we go ahead and ask the server (local or remote)
     # Cache key should probably include salt if it varies, but here override is always the same fixed correct salt
     if full_ct_hex in oracle_cache:
         log.debug(f"Oracle cache hit for ct: {full_ct_hex[:10]}...{full_ct_hex[-10:]}")
+        # short circuit if we got a hit
         return oracle_cache[full_ct_hex]
 
     log.debug(f"Querying oracle with ct: {full_ct_hex[:10]}...{full_ct_hex[-10:]}")
@@ -165,13 +180,24 @@ def query_oracle(
     duration = time.monotonic() - start_time
     log.debug(f"Oracle response received in {duration:.4f}s: {aes_ct_hex[:10]}...{aes_ct_hex[-10:]}")
 
-    # Basic check for returned AES ciphertext format (IV + 1 block usually)
-    expected_aes_len_hex = (16 + 16) * 2 # IV + 1 block for CBC
+    # Sanity check for returned AES ciphertext format (IV + 1 block usually)
+    #                       IV + 1 block for CBC
+    expected_aes_len_hex = (16 + 16) * 2
     if len(aes_ct_hex) != expected_aes_len_hex:
         log.warning(f"Unexpected AES ciphertext length received: {len(aes_ct_hex)}, expected {expected_aes_len_hex}")
-
+        raise ValueError(f"Unexpected AES ciphertext length received: {len(aes_ct_hex)}, expected {expected_aes_len_hex}")
+    
     # Store in cache
     oracle_cache[full_ct_hex] = aes_ct_hex
+
+    try:
+        # Somewhat expensive but it overwrites the pickle every time there is a hit - but it saves us in the long run!
+        with open(ORACLE_PATH_FILENAME, 'wb') as f:
+            pickle.dump(oracle_cache, f)
+        log.debug(f"Saved ct='{aes_ct_hex[:10]}...{aes_ct_hex[-10:]}' to {ORACLE_PATH_FILENAME}")
+    except Exception as e:
+        log.error(f"Failed to save solver inputs to {ORACLE_PATH_FILENAME}: {e}")
+        
     return aes_ct_hex
 
 # --- Attack Logic ---
@@ -219,18 +245,17 @@ def find_rounding_threshold(
              low = 1
              continue
 
-        # Create C_delta matrix
+        # Create C_delta matrix which is the candidate (binary searched) delta at i,j (k,l in the code)
         C_delta = [[0] * kem.nbar for _ in range(kem.mbar)]
         C_delta[target_M_i][target_M_j] = delta
 
-        # Pack C_delta
+        # den we pack dat C_delta
         try:
             c2_delta_bytes = kem.pack(C_delta)
         except Exception as e:
             log.error(f"Error packing C_delta with delta={delta} at ({target_M_i},{target_M_j}): {e}")
-            # Decide how to handle packing errors, maybe raise or try adjusting search
-            # For now, assume it's an issue with the search space and break
-            break 
+            # Fail closed after we raise a nice error msg
+            raise
 
         # Query oracle
         aes_delta_hex = query_oracle(server, kem, uid, c1_bytes, c2_delta_bytes)
@@ -241,13 +266,13 @@ def find_rounding_threshold(
             # We want the smallest delta causing the change.
             threshold_delta = delta
             high = delta - 1 # Try smaller deltas
-            log.debug(f"  Delta {delta}: Output CHANGED. New high={high}. Current threshold={threshold_delta}")
+            log.debug(f"\tCT CHANGED. New high={high}. Current threshold={threshold_delta}")
         else:
             # Oracle output did NOT change OR a smaller threshold was already found.
             # The actual threshold must be larger than current delta (if unchanged)
             # or we stick with the smaller threshold already found.
             low = delta + 1 # Try larger deltas
-            log.debug(f"  Delta {delta}: Output SAME or smaller threshold exists. New low={low}.")
+            log.debug(f"\tCT SAME or smaller threshold exists for delta={delta}. New low={low}.")
             
     if threshold_delta is not None:
         log.debug(f"Found threshold delta = {threshold_delta} for M[{target_M_i}][{target_M_j}]")
@@ -257,6 +282,7 @@ def find_rounding_threshold(
 
     return threshold_delta
 
+
 def _recover_single_approximation(args: Tuple[str, str, int, int]) -> Tuple[int, int, Optional[int]]:
     """Worker function executed in a separate process.
        It creates its own RemoteServer and FrodoKEM instances to avoid pickling
@@ -264,9 +290,12 @@ def _recover_single_approximation(args: Tuple[str, str, int, int]) -> Tuple[int,
     """
     variant, uid, k, l = args
 
-    # Instantiate a fresh RemoteServer (reads existing student file)  
-    # server = RemoteServer(variant, determ=False)
-    server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
+    # Initialize KEM instance within the worker also because of dumb pickle stuff
+    if SERVER_MODE == 'remote':
+        server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
+    else:
+        server = LocalServer(variant, determ=False)
+    log.info(f'[_recover_single_approximation] Using the {server} server')
 
     # Initialize KEM instance within the worker
     try:
@@ -290,13 +319,11 @@ def _recover_single_approximation(args: Tuple[str, str, int, int]) -> Tuple[int,
     try:
         c2_zero_bytes = kem.pack(C_zero)
     except Exception as e:
-        log.error(f"Worker S[{k}][{l}]: Error packing C_zero: {e}")
         raise Exception(f"Worker S[{k}][{l}]: Error packing C_zero: {e}")
 
     # --- Construct B' matrix ---
     r = l
     if not (0 <= r < kem.mbar and 0 <= k < kem.n):
-        log.error(f"Worker S[{k}][{l}]: Indices out of bounds r={r}, k={k}")
         raise Exception(f"Worker S[{k}][{l}]: Indices out of bounds r={r}, k={k}")
     B_prime = [[0] * kem.n for _ in range(kem.mbar)]
     B_prime[r][k] = 1
@@ -306,14 +333,14 @@ def _recover_single_approximation(args: Tuple[str, str, int, int]) -> Tuple[int,
         c1_bytes = kem.pack(B_prime)
         assert len(c1_bytes) == kem.mbar * kem.n * kem.D // 8
     except Exception as e:
-        log.error(f"Worker S[{k}][{l}]: Failed to pack B_prime: {e}")
         raise Exception(f"Worker S[{k}][{l}]: Failed to pack B_prime: {e}")
 
     # --- Get Base Oracle Output ---
     try:
+        # c1 <-- Just size of S with all 0's but with one 1 at r,k (i,j)
+        # c2 <-- All zeros :)
         base_aes_ct_hex = query_oracle(server, kem, uid, c1_bytes, c2_zero_bytes)
     except Exception as e:
-        log.error(f"Worker S[{k}][{l}]: Failed to query oracle for base CT: {e}")
         raise Exception(f"Worker S[{k}][{l}]: Failed to query oracle for base CT: {e}")
 
     # --- Find Rounding Threshold ---
@@ -341,7 +368,7 @@ def _recover_single_approximation(args: Tuple[str, str, int, int]) -> Tuple[int,
     return (k, l, delta_thresh)
 
 def recover_S_approximations(
-    server: RemoteServer,
+    server,
     kem: FrodoKEM,
     uid: str,
     max_k: Optional[int] = None,
@@ -367,7 +394,7 @@ def recover_S_approximations(
     log.info(f"Targeting entries up to k={target_k-1}, l={target_l-1}")
     for k in range(target_k):
         for l in range(target_l):
-             tasks.append((VARIANT, uid, k, l))
+            tasks.append((VARIANT, uid, k, l))
              
     total_entries = len(tasks)
     if total_entries == 0:
@@ -387,7 +414,8 @@ def recover_S_approximations(
             results_iterator = executor.map(_recover_single_approximation, tasks)
             
             for k, l, delta_thresh in results_iterator:
-                approximations_dict[(k, l)] = delta_thresh # Store result
+                # Store the delta threshold for that i,j (k,l in our code)
+                approximations_dict[(k, l)] = delta_thresh
                 recovered_count += 1
                 
                 # Log progress periodically
@@ -405,7 +433,7 @@ def recover_S_approximations(
 
     except Exception as e:
         log.error(f"An error occurred during parallel execution: {e}")
-        # Decide how to handle partial results if an error occurs mid-way
+        # TODO: Decide how to handle partial results if an error occurs mid-way
         # For now, return what was collected so far, but it will be incomplete.
         pass # Fall through to return collected results
 
@@ -431,7 +459,7 @@ def solve_system_from_approximations(
     (solve_system_testing.py) to a pickle file.
     Returns a dummy matrix.
     """
-    log.info("--- Entering solve_system_from_approximations (PLACEHOLDER - SAVING INPUTS) ---")
+    log.info("--- Entering solve_system_from_approximations (SAVING OFF CURRENT STATE) ---")
     variant = kem.variant
     log.info(f"  UID: {uid}")
     log.info(f"  KEM Variant: {variant}")
@@ -448,7 +476,7 @@ def solve_system_from_approximations(
         log.error(f"Failed to create directory {solver_dir}: {e}")
         raise OSError(f"Failed to create directory {solver_dir}: {e}")
 
-    # --- Read True S from student file --- 
+    # --- Read True S from student file if we have it (when we run locally only) --- 
     S_true = None
     log.info("Attempting to read true S from student file for debugging...")
     true_s_filename = os.path.join('student_files', f"{uid}.txt")
@@ -498,16 +526,17 @@ def solve_system_from_approximations(
     # call solve_system_testing.py
     # Pass configuration using constants and set cmdline=False
     S_recovered_matrix = solve_system_testing.main(
-        cmdline=False, # Call as a function, not from command line
-        uid=UID, # Pass the UID constant
-        cols=None, # Keep default or define constant if needed
-        workers=WORKERS, # Pass the WORKERS constant
-        bkz_block_size=80, # Updated starting block size to 80
-        bkz_float_type='mp', # Keep default or define constant if needed
-        log_level=LOG_LEVEL, # Pass the LOG_LEVEL constant
-        target_col=None # Keep default or define constant if needed
+        cmdline=False,          # Call as a function, not from command line
+        uid=UID,                # Pass the UID constant
+        cols=None,              # Keep default or define constant if needed
+        workers=WORKERS,        # Pass the WORKERS constant
+        bkz_block_size=80,      # Updated starting block size to 80
+        bkz_float_type='mp',    # Keep default or define constant if needed
+        log_level=LOG_LEVEL,    # Pass the LOG_LEVEL constant
+        target_col=None         # Keep default or define constant if needed
     )
 
+    # At this point we should have our recovered S :)
     return S_recovered_matrix
 
 
@@ -552,12 +581,13 @@ def verify_solution(
         log.error(f"Error building secret-key guess: {e}")
         return False
 
-    # Call the third interface and capture its output
+    # Call the third interface and capture its output to see if we got the Jabberwock flag
     success_message = "And hast thou slain the Jabberwock?"
     f = io.StringIO()
     try:
         log.info("Calling third interface with secret-key guess…")
         with contextlib.redirect_stdout(f):
+             # yay go ahead and call the third interface
              server.call_third_interface(uid, secret_guess_hex)
         output = f.getvalue()
         log.debug(f"Captured output from third interface: {output.strip()}") # Log captured output for debug
@@ -580,17 +610,15 @@ def verify_solution(
 
 def sanity_check_small_test_verfify():
     """Quick offline verification script.
+    Also do this because I am paranoid that the somehow I missed something.
     Loads the previously recovered S matrix for UID 119008041, builds the
     secret-key guess (S^T || pkh) and asks the local server's third interface to
-    confirm it – no oracle queries or recomputation required.
+    confirm it - no oracle queries or recomputation required.
     """
-
     import numpy as np
     import os, sys
     from frodokem import FrodoKEM
     from remote_server import RemoteServer
-
-    UID = "116606028"
 
     print("Starting small verify test...")
 
@@ -608,7 +636,7 @@ def sanity_check_small_test_verfify():
     # --------------------------------------------------------------------
     student_file = os.path.join("student_files", f"{UID}.txt")
     if not os.path.exists(student_file):
-        sys.exit("student_file missing – run attack_solver once to create it.")
+        sys.exit("student_file missing, run attack_solver once to create it.")
 
     with open(student_file, "r") as f:
         txt = f.read()
@@ -623,6 +651,7 @@ def sanity_check_small_test_verfify():
 
     pkh = kem.shake(bytes.fromhex(pk_hex), kem.len_pkh_bytes)
 
+    # assemble the transposed secret like we did in the other verification function
     S_T = S.T.astype(np.int16)
     st_bytes = bytearray()
     for i in range(kem.nbar):
@@ -653,18 +682,22 @@ def main():
     parser.add_argument("--determ", action="store_true", help="run based on the last student file saved")
     args = parser.parse_args()
 
+    # Override the constants from the maybe args
+    SERVER_MODE = args.mode
+    PROBLEM_SIZE = args.size
+
     server = None
     variant = "FrodoKEM-640-SHAKE"
-    if args.mode == "remote" and args.size == "full":
+    if SERVER_MODE == "remote" and PROBLEM_SIZE == "full":
         print("Remote Server")
         server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
-    # elif args.mode == "local" and args.size == "small":
+    # elif SERVER_MODE == "local" and PROBLEM_SIZE == "small":
     #     print("Local Server, small")
     #     variant = "Small-FrodoKEM"
     #     server = RemoteServer(variant, determ=args.determ)
-    # elif args.mode == "local":
-    #     print("Local Server, full")
-    #     server = RemoteServer(variant, determ=args.determ)
+    elif SERVER_MODE == "local":
+        print("Local Server, full")
+        server = LocalServer(variant, determ=DETERM)
     else:
         raise ValueError("Remote Server cannot use small size")
     
@@ -695,6 +728,10 @@ def main():
             max_l=effective_max_l,
             workers=WORKERS,
         )
+        # Alright by this point we should have a dict (approximations) that is full of well... 
+        # approximations being the delta threshold estimates of each value.
+        # Now we gotta tease out what the exact values are by solving the system from
+        # the approximations.
 
         # --- Stage 2: Solve for S ---
         # Pass constants to the solver function call
@@ -707,10 +744,10 @@ def main():
         else:
              log.warning("Skipping verification due to recovery limits (MAX_K/MAX_L constants were set).")
 
-        
-        # --- Sanity Check to call the small verify test ---
+        # --- Sanity Check to call the small verify test which calls the third interface ---
         sanity_check_small_test_verfify()
 
+        # If we got here and we got the success then we actually did the attack nice!
 
     except FileNotFoundError as e:
         log.error(f"File not found: {e}. If using DETERM=True, ensure student file exists.")
