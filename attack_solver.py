@@ -295,7 +295,7 @@ def _recover_single_approximation(args: Tuple[str, str, int, int]) -> Tuple[int,
         server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
     else:
         server = LocalServer(variant, determ=False)
-    log.info(f'[_recover_single_approximation] Using the {server} server')
+    log.debug(f'[_recover_single_approximation] Using the {server} server')
 
     # Initialize KEM instance within the worker
     try:
@@ -685,6 +685,8 @@ def main():
     # Override the constants from the maybe args
     SERVER_MODE = args.mode
     PROBLEM_SIZE = args.size
+    # SERVER_MODE = 'local'
+    # PROBLEM_SIZE = 'small'
 
     server = None
     variant = "FrodoKEM-640-SHAKE"
