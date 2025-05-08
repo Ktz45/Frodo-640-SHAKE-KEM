@@ -90,8 +90,12 @@ Matrix = List[List[int]]
 def setup_server_and_kem(uid: str, determ: bool) -> Tuple[RemoteServer, FrodoKEM, str, bytes, Matrix]:
     """Initializes RemoteServer, FrodoKEM instance, and gets public key."""
     log.info(f"Setting up server for UID: {uid}, Deterministic: {determ}")
-    # server = RemoteServer(VARIANT, determ=determ)
-    server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
+    
+    if SERVER_MODE == 'remote':
+        server = RemoteServer(TEST_URL, first_interface, second_interface, third_interface)
+    else:
+        server = LocalServer(VARIANT, determ=determ)
+
     kem = FrodoKEM(VARIANT)
     assert kem.n > 0 and kem.nbar > 0 and kem.mbar > 0 and kem.D > 0 and kem.B > 0, "KEM parameters not properly initialized"
 

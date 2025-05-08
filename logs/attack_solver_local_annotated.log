@@ -1,0 +1,12 @@
+2025-05-07 05:10:11,884 - __main__ - INFO - Successfully loaded oracle cache for UID 116606028 with 1432 cached ciphertexts.
+2025-05-07 05:10:11,885 - __main__ - INFO - Setting up server for UID: 116606028, Deterministic: False
+2025-05-07 05:10:12,791 - __main__ - INFO - Received Public Key (PK): 4F86E3990C...5E7D9EBE16
+2025-05-07 05:10:12,939 - __main__ - INFO - Parsed seedA and unpacked b into matrix B (640x8)
+2025-05-07 05:10:12,939 - __main__ - INFO - Starting fresh oracle recovery for S approximations (ignoring cached results)...
+2025-05-07 05:10:12,939 - __main__ - INFO - Starting recovery using 32 workers... Salt length: 32
+2025-05-07 05:10:12,939 - __main__ - INFO - Targeting entries up to k=639, l=7
+Local Server, full
+Server is up and running!
+Key pair generated and stored
+2025-05-07 05:11:18,991 - __main__ - INFO - Progress: 256/5120 (5.0%). Rate: 3.88 entries/s. ETA: 1255.0s
+2025-05-07 05:11:18,992 - __main__ - INFO -   Recovered S[31][7] ≈ 4095 (mod 8192)
