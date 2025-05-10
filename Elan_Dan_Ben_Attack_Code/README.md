@@ -64,6 +64,7 @@ This is enough evidence that setting up and proving the attack locally was a goo
 
 Lastly we wrote a few scripts to verify and visualize our results, the following is a few of them. We needed a way to visualize if our recovered secret indeed did match the true secret so we wrote a visualizer. Also, note, we wrote the code to crack one column at a time to speed up dev significantly so this is the first attempt at cracking a column.
 ![one_column_bad](so_wrong_matrix.png)
+
 We were initially very wrong and there was a bug in the solver code. After much playing around and realizing that we were calling `fpylll` wrong we finally got our solver to recover `S`!
 ![one_column_good](matrix_visualized_first_solve.png)
 
