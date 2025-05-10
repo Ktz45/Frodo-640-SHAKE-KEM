@@ -4,7 +4,7 @@
 ## Authors *(and their contributions)*:
 - Elan Fisher: *Sompute infrastructure (AWS EC2) deployment, attack scaffolding, lattice factorization, verification*
 - Benjamin Schreyer: *Core attack understanding and idea, initial research, attack code, small scale attack implementation*
-- Daniel Kootz: *Local (oracle) and remote server interfaces, matrix operations, *
+- Daniel Kootz: *Local (oracle) and remote server interfaces, matrix operations*
 
 ## Overview *(How we did it)*:
 We have attached our complete implementation of our attack against the FrodoKEM post-quantum key encapsulation mechanism. We have successfully (confirmed with TA and newly Dr., **Dr. Doruk** on 5/8/2025 after the attack ran) recovered the secret key through interaction with a decryption oracle. The attack was first developed and tested to be run locally on a small scale of the attack.
