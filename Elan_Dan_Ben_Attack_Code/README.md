@@ -34,7 +34,7 @@ Below is a snippet from our code which illustrates this where `C1` is all 0's ex
 full_ct_bytes = c1_bytes + c2_bytes + salt_to_use
 ```
 
-The solver code (and preliminary `S` approximation code) was deployed on an `AWS EC2` instance with 32 `vCores` and 64 GB memory as we wanted to not waste any precious time waiting for broken code to run by **Elan**. Before the deployment we needed to answer if it was possible to do the LWE in parallel as this was our initial exchange...
+The solver code (and preliminary `S` approximation code) was deployed on an `AWS EC2` instance with 32 `vCores` and 64 GB (`c6i.8xlarge`) memory as we wanted to not waste any precious time waiting for broken code to run by **Elan**. Before the deployment we needed to answer if it was possible to do the LWE in parallel as this was our initial exchange...
 ![the attack will take 150 days](150_days.png)
 We were not expecting the attack to be this intense and so,
 ![elan_response](elan_response.png)
