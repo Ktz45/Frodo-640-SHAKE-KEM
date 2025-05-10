@@ -2,7 +2,7 @@
 ## This attack cost us `$58.57`, and it was worth it!
 
 ## Authors *(and their contributions)*:
-- Elan Fisher: *Sompute infrastructure (AWS EC2) deployment, attack scaffolding, lattice factorization, verification*
+- Elan Fisher: *Compute infrastructure (AWS EC2) deployment, attack scaffolding, lattice factorization, verification*
 - Benjamin Schreyer: *Core attack understanding and idea, initial research, attack code, small scale attack implementation*
 - Daniel Kootz: *Local (oracle) and remote server interfaces, matrix operations*
 
